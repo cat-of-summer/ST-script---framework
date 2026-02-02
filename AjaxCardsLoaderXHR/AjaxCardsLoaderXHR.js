@@ -4,12 +4,17 @@
  * вставляет/замещает карточки согласно маппингам.
  *
  * Constructor:
- *   new AjaxCardsLoaderXHR(mappings)
+ *   new AjaxCardsLoaderXHR(mappings, options = {})
  *
  * mappings: Array of {
  *   method: 'replace' | 'append', // действие
  *   current: string,              // селектор в текущем документе (querySelectorAll)
  *   new?: string                  // селектор в пришедшем HTML (по умолчанию = current)
+ * }
+ *
+ * options: Object {
+ *   mutator?: function(nodes: Element[]) -> void  // вызывается с новыми нодами ДО вставки в документ
+ *   on_paste?: function(nodes: Element[]) -> void // вызывается с вставленными нодами ПОСЛЕ вставки
  * }
  *
  * Public methods:
@@ -22,13 +27,17 @@
  * Notes:
  * - Ответ ожидается как HTML (text/html). Мы парсим responseText через DOMParser.
  * - Для фильтрации дубликатов используем id и outerHTML.
+ * - mutator и on_paste применяются ко всем маппингам.
  */
 
 class AjaxCardsLoaderXHR {
   /**
    * @param {Array<Object>} mappings
+   * @param {Object} options
+   * @param {Function} options.mutator - функция для преобразования новых нод перед вставкой
+   * @param {Function} options.on_paste - функция для обработки вставленных нод
    */
-  constructor(mappings = []) {
+  constructor(mappings = [], options = {}) {
     if (!Array.isArray(mappings)) throw new TypeError('mappings must be an array');
     this.mappings = mappings.map((m, i) => {
       if (!m || typeof m.current !== 'string') {
@@ -44,6 +53,16 @@ class AjaxCardsLoaderXHR {
         newSelector: typeof m.new === 'string' ? m.new : m.current
       };
     });
+
+    // Сохраняем mutator и on_paste
+    if (options.mutator && typeof options.mutator !== 'function') {
+      throw new TypeError('options.mutator must be a function');
+    }
+    if (options.on_paste && typeof options.on_paste !== 'function') {
+      throw new TypeError('options.on_paste must be a function');
+    }
+    this.mutator = options.mutator || null;
+    this.on_paste = options.on_paste || null;
 
     /** @type {XMLHttpRequest|null} */
     this._lastXhr = null;
@@ -224,6 +243,11 @@ class AjaxCardsLoaderXHR {
         const clonedNewNodes = foundNew.map(n => this.cloneNodeDeep(n));
         const uniqNewNodes = this.uniqueByIdAndHTML(clonedNewNodes);
 
+        // Вызываем mutator перед вставкой узлов
+        if (this.mutator) {
+          this.mutator(uniqNewNodes);
+        }
+
         // Найдём текущие ноды на странице
         const currentNodes = Array.from(document.querySelectorAll(currentSelector));
 
@@ -253,17 +277,29 @@ class AjaxCardsLoaderXHR {
             currentNodes.forEach(n => n.remove());
             report.added = toInsert.length;
             report.removed = currentNodes.length;
+            // Вызываем on_paste после вставки
+            if (this.on_paste) {
+              this.on_paste(toInsert);
+            }
           } else {
             // fallback: append в body
             const toInsert = uniqNewNodes.map(n => this.cloneNodeDeep(n));
             toInsert.forEach(n => document.body.appendChild(n));
             report.added = toInsert.length;
+            // Вызываем on_paste после вставки
+            if (this.on_paste) {
+              this.on_paste(toInsert);
+            }
           }
         } else if (method === 'append') {
           if (currentNodes.length === 0) {
             const toInsert = uniqNewNodes.map(n => this.cloneNodeDeep(n));
             toInsert.forEach(n => document.body.appendChild(n));
             report.added = toInsert.length;
+            // Вызываем on_paste после вставки
+            if (this.on_paste) {
+              this.on_paste(toInsert);
+            }
           } else {
             // уникальные родители currentNodes
             const parents = [];
@@ -293,6 +329,10 @@ class AjaxCardsLoaderXHR {
 
               nodesToAppend.forEach(n => parent.appendChild(n));
               report.added += nodesToAppend.length;
+              // Вызываем on_paste после вставки в каждого родителя
+              if (this.on_paste && nodesToAppend.length > 0) {
+                this.on_paste(nodesToAppend);
+              }
             });
           }
         }
