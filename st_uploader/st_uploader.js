@@ -1,15 +1,13 @@
 class st_uploader {
-    #params = {};
-
-    get params() { return this.#params; }
-
     static formatSize(size) {
         const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
 
         let i = 0;
 
-        while (size >= 1024 && i < units.length - 1)
-            size /= 1024; i++;
+        while (size >= 1024 && i < units.length - 1) {
+            size /= 1024;
+            i++;
+        }
 
         return size.toFixed(1) + ' ' + units[i];
     }
@@ -25,10 +23,10 @@ class st_uploader {
             on_init: () => {},
             before_files_add: () => {},
             on_files_add: () => {},
-            before_files_add: () => {},
+            before_file_delete: () => {},
             on_files_delete: () => {},
-            before_files_drop: () => {},
-            on_files_drop: () => {},
+            before_drop: () => {},
+            on_drop: () => {},
             handle_exception: null,
 
             ...params,
@@ -47,39 +45,41 @@ class st_uploader {
         params.input_name = input_name + (params.limits.files != 1 ? '[]' : '');
         params.delete_name = (params.delete_name ? params.delete_name.replace(/\[\]$/, '')  : input_name) + (params.limits.files != 1 ? '[]' : '');
 
-        this.#params = params;
-
-        for (let [key, value] of Object.entries(params))
-            if (typeof value == "function")
-                this[key] = value.bind(this);
-
-        this.before_init(params);
-
-        const handleException = (file, message, code = null) => {
-            if (params.handle_exception)
-                return this.handle_exception(Object.assign(
-                    new Error(message),{
-                        file,
-                        code
-                    }
-                ));
-            else
-                alert(message);
-
-            return false;
-        }
-
         document.querySelectorAll(params.target).forEach(target => {
+            for (let [key, value] of Object.entries(params))
+                if (typeof value == "function")
+                    target[key] = value.bind(target);
+
+            target.before_init(params);
+
+            const handleException = (file, message, code = null) => {
+                if (params.handle_exception)
+                    return target.handle_exception(Object.assign(
+                        new Error(message),{
+                            file,
+                            code
+                        }
+                    ));
+                else
+                    alert(message);
+
+                return false;
+            }
+
             let files_list = target.querySelector('*[files-list]');
             let entry_template = null;
 
-            target.files_count = 0;
+            target.existing_files = new Map();
+            target.files = new Map();
             target.total_size = 0;
 
             const createFileEntry = (file) => {
                 let entry = (new DOMParser()).parseFromString(entry_template, 'text/html').body.firstElementChild;
 
-                entry.file = file;
+                file._id = crypto.randomUUID();
+
+                target.files.set(file._id, file);
+                target.total_size += file.size;
 
                 let preview = entry.querySelectorAll('img[preview]');
                 let filename = entry.querySelectorAll('*[filename]');
@@ -101,13 +101,13 @@ class st_uploader {
                 });
 
                 delete_button.forEach(b => b.addEventListener('click', () => {
-                    if (this.before_file_delete(file) === false) return;
+                    if (target.before_file_delete(file) === false) return;
 
-                    target.files_count = Math.max(0, target.files_count - 1);
-                    target.total_size = Math.max(0, target.total_size - parseInt(entry.file.size));
+                    target.total_size = Math.max(0, target.total_size - parseInt(file.size));
+                    target.files.delete(file._id);
                     entry.remove();
 
-                    this.on_file_delete(file)
+                    target.on_file_delete(file)
                 }));
 
                 let hidden = Object.assign(document.createElement('input'), {
@@ -131,36 +131,35 @@ class st_uploader {
                 let delete_button = entry.querySelectorAll('*[delete-button]');
 
                 if (input) {
-                    let input_value = input.value;
+                    target.existing_files.set(hidden._id, entry);
 
                     delete_button.forEach(b => b.addEventListener('click', () => {
-                        if (this.before_file_delete(entry) === false) return;
+                        if (target.before_file_delete(entry) === false) return;
 
                         let hidden = Object.assign(document.createElement('input'), {
                             type: 'hidden',
                             name: params.delete_name,
                             hidden: true,
-                            value: input_value,
+                            value: input.value,
+                            _id: crypto.randomUUID()
                         });
                         target.appendChild(hidden);
 
-                        target.files_count = Math.max(0, target.files_count - 1);
-                        this.on_file_delete(entry);
+                        target.existing_files.delete(hidden._id);
+                        target.on_file_delete(entry);
 
                         entry.remove();
                     }));
                     
                     input.remove();
-                    target.files_count++;
-                    return entry;
-                }
+                } else 
+                    entry.remove();
 
-                entry.remove();
-                return false;
+                return entry;
             }
 
             const checkFile = (file) => {
-                if (params.limits.files > 0 && target.files_count >= params.limits.files)
+                if (params.limits.files > 0 && (target.files.size + target.existing_files.size) >= params.limits.files)
                     return handleException(file, `Максимум файлов: ${params.limits.files}`, 0);
 
                 if (params.limits.file_size > 0 && file.size > params.limits.file_size)
@@ -202,7 +201,7 @@ class st_uploader {
             const handleFiles = (files) => {
                 let file_array = Array.from(files);
 
-                this.before_files_add(file_array);
+                target.before_files_add(file_array);
 
                 file_array = file_array.filter(checkFile);
 
@@ -211,26 +210,23 @@ class st_uploader {
 
                     file_array.forEach(file => {
                         fragment.appendChild(createFileEntry(file));
-
-                        target.files_count++;
-                        target.total_size += file.size;
                     });
 
                     files_list.appendChild(fragment);
                 }
 
-                this.on_files_add(file_array);
+                target.on_files_add(file_array);
             };
             
             try {
                 let existing = target.querySelectorAll(params.entry);
-                if (existing .length > 0) {
-                    let temp_node = null;
-  
-                    existing.forEach(i => {
-                        if (!(temp_node = createDeleteEntry(i))) return;
 
-                        if (!entry_template) entry_template = temp_node.outerHTML;
+                if (existing .length > 0) {
+                    existing.forEach(i => {
+                        let temp_node = createDeleteEntry(i);
+
+                        if (!entry_template)
+                            entry_template = temp_node.outerHTML;
                     });
                 }
             } catch (e) {
@@ -245,7 +241,7 @@ class st_uploader {
                     e.preventDefault();
                     zone.setAttribute('dragover', '');
                     if (!wasDragOver) {
-                        this.before_drop();
+                        target.before_drop();
                         wasDragOver = true;
                     }
                 }));
@@ -258,7 +254,7 @@ class st_uploader {
 
                 zone.addEventListener('drop', e => {
                     e.preventDefault();
-                    this.on_drop();
+                    target.on_drop();
                     handleFiles(e.dataTransfer.files);
                 });
             });
@@ -278,8 +274,8 @@ class st_uploader {
                 document.body.appendChild(hidden);
                 hidden.click();
             }));
-        });
 
-        this.on_init(params);
+            target.on_init(params);
+        });
     }
 }
