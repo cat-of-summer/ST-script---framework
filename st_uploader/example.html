@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="st_uploader.js"></script>
+</head>
+<body>
+
+    <form method="POST" enctype="multipart/form-data">
+        <div class="upload-wrapper">
+            <!-- Зона перетаскивания -->
+            <div add-button drop-zone style="border: 2px dashed #888; padding: 20px; text-align: center;">
+                Перетащи файлы сюда или нажми «Добавить»
+            </div>
+
+            <!-- Кнопка добавления -->
+            <button add-button type="button">Добавить файл</button>
+
+            <!-- Сюда будут добавляться элементы -->
+            <div files-list></div>
+
+            <!-- Шаблон файла (будет удалён после инициализации) -->
+            <div file-item style="border: 1px solid #ccc; margin-top: 10px; padding: 10px;">
+                <input type="hidden" name="FILES" value="1">
+                <div style="display: flex; align-items: center;">
+                    <img preview src="https://artison.4215431-yd55498.twc1.net/upload/resize_cache/webp/resize_cache/iblock/0af/900_450_2/3mdkimfu9cfgwdc47btdz357ahxfmnfg.webp" style="width: 50px; height: 50px; object-fit: cover; margin-right: 10px;" />
+                    <div>
+                        <div><strong filename>Имя файла</strong></div>
+                        <div style="font-size: 0.9em; color: gray;" fileweight>1кб</div>
+                    </div>
+                    <button type="button" delete-button style="margin-left: auto;">Удалить</button>
+                </div>
+            </div>
+            <div file-item style="border: 1px solid #ccc; margin-top: 10px; padding: 10px;">
+                <input type="hidden" name="FILES" value="2">
+                <div style="display: flex; align-items: center;">
+                    <img preview src="https://artison.4215431-yd55498.twc1.net/upload/resize_cache/webp/resize_cache/iblock/a33/100_100_2/o79cbku3zrcuf4xyui261n4rvngpillf.webp" style="width: 50px; height: 50px; object-fit: cover; margin-right: 10px;" />
+                    <div>
+                        <div><strong filename>Крутой файл</strong></div>
+                        <div style="font-size: 0.9em; color: gray;" fileweight>2кб</div>
+                    </div>
+                    <button type="button" delete-button style="margin-left: auto;">Удалить</button>
+                </div>
+            </div>
+        </div>
+        <button type="submit">Отправить</button>
+    </form>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            new st_uploader({
+                target: '.upload-wrapper',
+                input_name: 'FILES',
+                delete_name: 'FILES_TO_DELETE',
+
+                before_init: (params) => { console.log('before_init', params); },
+                on_init: (params) => { console.log('on_init', params); },
+                before_files_add: (file_array) => { console.log('before_files_add', file_array); },
+                on_files_add: (file_array) => { console.log('on_files_add', file_array); },
+                before_file_delete: (file) => { console.log('before_file_delete', file); },
+                on_file_delete: (file) => { console.log('on_file_delete', file); },
+                before_drop: () => { console.log('before_files_drop'); },
+                on_drop: () => { console.log('on_files_drop'); },
+
+                handle_exception: (e) => {
+                    throw e;
+                },
+                
+                limits: {
+                    files: 3,
+                    file_size: 5 * 1024 * 1024,     // 5 МБ
+                    total_size: 20 * 1024 * 1024,   // 20 МБ
+                    mimes: ['image/*', 'application/pdf']
+                },
+            });
+
+            document.querySelector('form').addEventListener('submit', (e) => {
+                e.preventDefault();
+
+                for (let [key, value] of new FormData(e.target).entries())
+                    console.log(key, value);
+            });
+
+        });
+    </script>
+
+
+</body>
+</html>
