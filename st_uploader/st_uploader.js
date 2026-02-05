@@ -1,4 +1,6 @@
 class st_uploader {
+    static #instance = Symbol();
+
     static formatSize(size) {
         const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
 
@@ -24,7 +26,7 @@ class st_uploader {
             before_files_add: () => {},
             on_files_add: () => {},
             before_file_delete: () => {},
-            on_files_delete: () => {},
+            on_file_delete: () => {},
             before_drop: () => {},
             on_drop: () => {},
             handle_exception: null,
@@ -43,9 +45,14 @@ class st_uploader {
         let input_name = params.input_name.replace(/\[\]$/, '');
 
         params.input_name = input_name + (params.limits.files != 1 ? '[]' : '');
-        params.delete_name = (params.delete_name ? params.delete_name.replace(/\[\]$/, '')  : input_name) + (params.limits.files != 1 ? '[]' : '');
+        params.delete_name = (params.delete_name ? params.delete_name.replace(/\[\]$/, '')  : input_name + '_to_delete') + (params.limits.files != 1 ? '[]' : '');
 
         document.querySelectorAll(params.target).forEach(target => {
+            if (target[st_uploader.#instance])
+                throw new Error("Already inited");
+
+            target[st_uploader.#instance] = this;
+
             for (let [key, value] of Object.entries(params))
                 if (typeof value == "function")
                     target[key] = value.bind(target);
@@ -69,7 +76,6 @@ class st_uploader {
             let files_list = target.querySelector('*[files-list]');
             let entry_template = null;
 
-            target.existing_files = new Map();
             target.files = new Map();
             target.total_size = 0;
 
@@ -127,26 +133,36 @@ class st_uploader {
             }
 
             const createDeleteEntry = (entry) => {
-                let input = entry.querySelector(`input[name^="${input_name}"]`);
+                let input = entry.querySelector(`input[name^="${input_name}"]`) ?? entry.querySelector(`input[type='hidden'][value]`) ?? entry.querySelector(`input[value]`);
+                let preview = entry.querySelectorAll('img[preview]');
+                let filename = entry.querySelectorAll('*[filename]');
+                let fileweight = entry.querySelectorAll('*[fileweight]');
                 let delete_button = entry.querySelectorAll('*[delete-button]');
 
                 if (input) {
-                    target.existing_files.set(hidden._id, entry);
+                    let file = {
+                        _id: crypto.randomUUID(),
+                        preview: preview?.src || '',
+                        value: input.value,
+                        name: filename?.innerText || '',
+                        size: parseFloat(fileweight?.innerText || 0)
+                    };
+
+                    target.files.set(file._id, file);
 
                     delete_button.forEach(b => b.addEventListener('click', () => {
-                        if (target.before_file_delete(entry) === false) return;
+                        if (target.before_file_delete(file) === false) return;
 
                         let hidden = Object.assign(document.createElement('input'), {
                             type: 'hidden',
                             name: params.delete_name,
                             hidden: true,
-                            value: input.value,
-                            _id: crypto.randomUUID()
+                            value: input.value
                         });
                         target.appendChild(hidden);
 
-                        target.existing_files.delete(hidden._id);
-                        target.on_file_delete(entry);
+                        target.files.delete(file._id);
+                        target.on_file_delete(file);
 
                         entry.remove();
                     }));
@@ -159,7 +175,7 @@ class st_uploader {
             }
 
             const checkFile = (file) => {
-                if (params.limits.files > 0 && (target.files.size + target.existing_files.size) >= params.limits.files)
+                if (params.limits.files > 0 && target.files.size >= params.limits.files)
                     return handleException(file, `Максимум файлов: ${params.limits.files}`, 0);
 
                 if (params.limits.file_size > 0 && file.size > params.limits.file_size)
