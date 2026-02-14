@@ -735,7 +735,31 @@ class App extends HTMLElement {
         else if (raw === 'false') val = false;
         else if (/^-?\d+(\.\d+)?$/.test(raw)) val = Number(raw);
         else { try { val = JSON.parse(raw); } catch { val = raw; } }
-        this[propName] = val;
+        if (!descriptor || !descriptor.set) {
+            let internalValue = val;
+            if (typeof val === 'object' && val !== null)
+                internalValue = this.#createReactiveProxy(val, [propName]);
+            else if (typeof val === 'function')
+                internalValue = this.#createReactiveFunction(val, propName);
+            Object.defineProperty(this, propName, {
+                get() {
+                    this.#track(propName);
+                    return internalValue;
+                },
+                set(newValue) {
+                    if (internalValue !== newValue) {
+                        if (typeof newValue === 'object' && newValue !== null)
+                            internalValue = this.#createReactiveProxy(newValue, [propName]);
+                        else
+                            internalValue = newValue;
+                        this.#trigger(propName);
+                    }
+                },
+                enumerable: true,
+                configurable: true
+            });
+        } else
+            this[propName] = val;
     }
 
     static get observedAttributes() {
