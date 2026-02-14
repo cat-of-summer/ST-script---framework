@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ST Framework - Полная демонстрация возможностей</title>
+    <script src="st_app.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .example {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .example h2 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #42b883;
+            padding-bottom: 10px;
+        }
+        .example h3 {
+            color: #555;
+            margin-top: 15px;
+        }
+        .note {
+            background: #fff3cd;
+            border-left: 4px solid #f39c12;
+            padding: 10px 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .checklist {
+            background: #e8f5e9;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .checklist ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        .checklist li:before {
+            content: "✓ ";
+            color: #42b883;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        button {
+            background: #42b883;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #35a372;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        input, textarea, select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            margin: 5px;
+        }
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #42b883;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .badge-success { background: #42b883; color: white; }
+        .badge-warning { background: #f39c12; color: white; }
+        .badge-danger { background: #e74c3c; color: white; }
+        .nested-box {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            background: #f9f9f9;
+        }
+        .nested-box h4 {
+            margin-top: 0;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 Vue-like Framework - Полная демонстрация возможностей</h1>
+    <p>Полный обзор всех возможностей реактивного фреймворка с примерами</p>
+
+    <!-- Чеклист возможностей -->
+    <div class="checklist">
+        <h2>📋 Список возможностей фреймворка</h2>
+        <ul>
+            <li><strong>Реактивность:</strong> автоматическое обновление DOM при изменении данных</li>
+            <li><strong>Интерполяция:</strong> вывод данных через <code>{{ expression }}</code></li>
+            <li><strong>Двусторонняя привязка:</strong> атрибут <code>model</code> для форм</li>
+            <li><strong>События:</strong> обработчики через <code>@event="handler()"</code></li>
+            <li><strong>Условный рендеринг:</strong> <code>if</code>, <code>else-if</code>, <code>else</code></li>
+            <li><strong>Циклы:</strong> <code>for="item in items"</code> с доступом к <code>$index</code></li>
+            <li><strong>Видимость:</strong> <code>show="condition"</code> для скрытия элементов</li>
+            <li><strong>Вычисляемые свойства:</strong> геттеры с автоматическим пересчётом</li>
+            <li><strong>Атрибуты с <code>:</code>:</strong> передача данных в дочерние компоненты</li>
+            <li><strong>Вложенные компоненты:</strong> <code>&lt;st-app&gt;</code> внутри <code>&lt;st-app&gt;</code></li>
+            <li><strong>innerHTML как шаблон:</strong> переопределение template через содержимое элемента</li>
+            <li><strong>watch:</strong> <code>this.watch(source, callback, options?)</code>, в колбэке <code>unwatch()</code> — третий аргумент</li>
+        </ul>
+    </div>
+
+    <!-- Пример 1: Счётчик -->
+    <div class="example">
+        <h2>1. Счётчик (Базовая реактивность)</h2>
+        <p>Демонстрация базовой реактивности, интерполяции и обработки событий.</p>
+        <st-app ::app="counter"></st-app>
+    </div>
+
+    <!-- Пример 2: Условный рендеринг -->
+    <div class="example">
+        <h2>2. Условный рендеринг (if/else-if/else)</h2>
+        <p>Показ/скрытие элементов на основе условий.</p>
+        <st-app ::app="conditional"></st-app>
+    </div>
+
+    <!-- Пример 3: Списки -->
+    <div class="example">
+        <h2>3. Списки и циклы (for)</h2>
+        <p>Работа с массивами через директиву <code>for</code> и доступ к индексу <code>$index</code>.</p>
+        <st-app ::app="list"></st-app>
+    </div>
+
+    <!-- Пример 4: Формы -->
+    <div class="example">
+        <h2>4. Формы и двусторонняя привязка (model)</h2>
+        <p>Связывание полей форм с данными через <code>model</code> и вычисляемые свойства.</p>
+        <st-app ::app="form"></st-app>
+    </div>
+
+    <!-- Пример 5: Todo List -->
+    <div class="example">
+        <h2>5. Todo List (Комплексный пример)</h2>
+        <p>Приложение с несколькими вычисляемыми свойствами и методами.</p>
+        <st-app ::app="todo"></st-app>
+    </div>
+
+    <!-- Пример 5a: watch() и unwatch() -->
+    <div class="example">
+        <h2>5a. watch() и unwatch()</h2>
+        <p>Отслеживание свойств, геттеров и вызовов методов. Остановка из колбэка через <code>unwatch()</code> (третий аргумент). Откройте консоль.</p>
+        <st-app ::app="watchDemo"></st-app>
+    </div>
+
+    <!-- Пример 6: Вложенные объекты -->
+    <div class="example">
+        <h2>6. Вложенные реактивные объекты</h2>
+        <p>Реактивность работает на любом уровне вложенности объектов.</p>
+        <st-app ::app="nested"></st-app>
+    </div>
+
+    <!-- Пример 7: Атрибуты с : -->
+    <div class="example">
+        <h2>7. Передача данных через атрибуты с <code>:</code></h2>
+        <p>Атрибуты, начинающиеся с <code>:</code>, парсятся как данные и передаются в компонент.</p>
+        <div class="note">
+            <strong>Примечание:</strong> Атрибуты <code>:initial-count</code>, <code>:step</code> и <code>:label</code> 
+            преобразуются в свойства <code>initialCount</code>, <code>step</code> и <code>label</code> компонента.
+        </div>
+        <st-app ::app="withProps" :initial-count="100" :step="5" :label="'Счётчик с настройками'"></st-app>
+    </div>
+
+    <!-- Пример 8: innerHTML как шаблон -->
+    <div class="example">
+        <h2>8. Использование innerHTML как шаблона</h2>
+        <p>Содержимое элемента <code>&lt;st-app&gt;</code> переопределяет шаблон из <code>App.create()</code>.</p>
+        <div class="note">
+            <strong>Примечание:</strong> Приложение <code>inlineTemplate</code> объявлено с пустым <code>template</code>, 
+            но использует разметку внутри элемента.
+        </div>
+        <st-app ::app="inlineTemplate">
+            <div style="padding: 20px; background: #e3f2fd; border-radius: 8px;">
+                <h3>{{ title }}</h3>
+                <p>Текст из innerHTML: <strong>{{ message }}</strong></p>
+                <input type="text" model="message" placeholder="Измените сообщение...">
+                <button @click="updateMessage()">🔄 Обновить</button>
+                <p style="color: #666; margin-top: 10px;">Обновлено: {{ updateCount }} раз(а)</p>
+            </div>
+        </st-app>
+    </div>
+
+    <!-- Пример 9: Вложенные компоненты (1 уровень) -->
+    <div class="example">
+        <h2>9. Вложенные компоненты (родитель → ребёнок)</h2>
+        <p>Родительский компонент передаёт данные дочернему через атрибуты с <code>:</code>.</p>
+        <div class="note">
+            <strong>Примечание:</strong> Дочерний компонент получает данные через атрибуты <code>:count</code> и <code>:name</code>.
+            После исправления бага #6, изменения в родителе автоматически синхронизируются с дочерним компонентом.
+        </div>
+        <st-app ::app="parent"></st-app>
+    </div>
+
+    <!-- Пример 10: Вложенные компоненты (2 уровня) -->
+    <div class="example">
+        <h2>10. Вложенные компоненты (родитель → ребёнок → внук)</h2>
+        <p>Трёхуровневая вложенность компонентов с передачей данных между уровнями.</p>
+        <st-app ::app="grandparent"></st-app>
+    </div>
+
+    <!-- Пример 11: Комбинированный пример -->
+    <div class="example">
+        <h2>11. Комбинированный пример (все возможности вместе)</h2>
+        <p>Список элементов (цикл <code>for</code>) — клик по пункту передаёт значение во вложенный <code>&lt;st-app&gt;</code> через атрибут <code>:item</code>; блок деталей рендерится из innerHTML дочернего компонента. Показаны: реактивность, <code>show</code>, <code>@click</code>, вложенный компонент, передача данных через <code>:</code>, шаблон из innerHTML.</p>
+        <st-app ::app="combined"></st-app>
+    </div>
+
+    <script>
+        // Пример 1: Счётчик
+        App.create({
+            app: 'counter',
+            count: 0,
+            
+            increment() { this.count++; },
+            decrement() { this.count--; },
+            reset() { this.count = 0; },
+            
+            template: `
+                <div style="text-align: center;">
+                    <h3 style="font-size: 48px; margin: 20px 0;">{{ count }}</h3>
+                    <button @click="increment()">➕ +1</button>
+                    <button @click="decrement()">➖ -1</button>
+                    <button @click="reset()">🔄 Reset</button>
+                </div>
+            `
+        });
+
+        // Пример 2: Условный рендеринг
+        App.create({
+            app: 'conditional',
+            score: 75,
+            
+            template: `
+                <div>
+                    <label>Оценка: <input type="range" model="score" min="0" max="100"></label>
+                    <span style="font-size: 24px; margin-left: 10px;">{{ score }}</span>
+                    
+                    <div style="margin-top: 20px; padding: 15px; border-radius: 4px;" 
+                         if="score >= 90"
+                         style="background: #d4edda; color: #155724;">
+                        <strong>🌟 Отлично!</strong> Вы получили высший балл!
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding: 15px; border-radius: 4px;" 
+                         else-if="score >= 70"
+                         style="background: #d1ecf1; color: #0c5460;">
+                        <strong>👍 Хорошо!</strong> Продолжайте в том же духе!
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding: 15px; border-radius: 4px;" 
+                         else-if="score >= 50"
+                         style="background: #fff3cd; color: #856404;">
+                        <strong>⚠️ Удовлетворительно</strong> Есть куда расти!
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding: 15px; border-radius: 4px;" 
+                         else
+                         style="background: #f8d7da; color: #721c24;">
+                        <strong>❌ Плохо</strong> Нужно больше стараться!
+                    </div>
+                </div>
+            `
+        });
+
+        // Пример 3: Списки
+        App.create({
+            app: 'list',
+            items: ['JavaScript', 'Vue', 'React', 'Angular'],
+            newItem: '',
+            showList: true,
+            
+            addItem() {
+                if (this.newItem.trim()) {
+                    this.items.push(this.newItem.trim());
+                    this.newItem = '';
+                }
+            },
+            
+            removeItem(index) {
+                this.items.splice(index, 1);
+            },
+            
+            template: `
+                <div>
+                    <div style="margin-bottom: 15px;">
+                        <input type="text" 
+                               model="newItem" 
+                               placeholder="Добавить элемент..."
+                               @keyup="if ($event.key === 'Enter') addItem()">
+                        <button @click="addItem()">➕ Добавить</button>
+                        <button @click="showList = !showList">
+                            {{ showList ? '👁️ Скрыть' : '👁️ Показать' }}
+                        </button>
+                    </div>
+                    
+                    <div show="showList">
+                        <p show="items.length === 0" style="color: #999; font-style: italic;">
+                            Список пуст. Добавьте элементы!
+                        </p>
+                        
+                        <ul show="items.length > 0">
+                            <li for="item in items" 
+                                style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>{{ $index + 1 }}. {{ item }}</span>
+                                <button @click="removeItem($index)" 
+                                        style="background: #e74c3c; padding: 5px 10px;">
+                                    🗑️ Удалить
+                                </button>
+                            </li>
+                        </ul>
+                        
+                        <p style="margin-top: 10px; color: #666;">
+                            Всего элементов: <strong>{{ items.length }}</strong>
+                        </p>
+                    </div>
+                </div>
+            `
+        });
+
+        // Пример 4: Формы
+        App.create({
+            app: 'form',
+            username: '',
+            email: '',
+            password: '',
+            country: 'russia',
+            agreed: false,
+            
+            get isValid() {
+                return this.username.length >= 3 
+                    && this.email.includes('@') 
+                    && this.password.length >= 6
+                    && this.agreed;
+            },
+            
+            submit() {
+                if (this.isValid) {
+                    alert('Форма отправлена!\n' + JSON.stringify({
+                        username: this.username,
+                        email: this.email,
+                        country: this.country
+                    }, null, 2));
+                }
+            },
+            
+            template: `
+                <form @submit="$event.preventDefault(); submit()" style="max-width: 400px;">
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px;">Имя пользователя:</label>
+                        <input type="text" model="username" placeholder="Минимум 3 символа" style="width: 100%;">
+                        <small show="username.length > 0 && username.length < 3" style="color: red;">
+                            Слишком короткое имя
+                        </small>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px;">Email:</label>
+                        <input type="email" model="email" placeholder="email@example.com" style="width: 100%;">
+                        <small show="email.length > 0 && !email.includes('@')" style="color: red;">
+                            Неверный формат email
+                        </small>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px;">Пароль:</label>
+                        <input type="password" model="password" placeholder="Минимум 6 символов" style="width: 100%;">
+                        <small show="password.length > 0 && password.length < 6" style="color: red;">
+                            Пароль слишком короткий
+                        </small>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px;">Страна:</label>
+                        <select model="country" style="width: 100%;">
+                            <option value="russia">Россия</option>
+                            <option value="usa">США</option>
+                            <option value="germany">Германия</option>
+                            <option value="france">Франция</option>
+                        </select>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label>
+                            <input type="checkbox" model="agreed">
+                            Я согласен с условиями
+                        </label>
+                    </div>
+                    
+                    <button type="submit" disabled="{{ !isValid }}">
+                        📝 Отправить
+                    </button>
+                    
+                    <div show="!isValid" style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 4px;">
+                        <strong>⚠️ Заполните все поля корректно</strong>
+                    </div>
+                </form>
+            `
+        });
+
+        // Пример 5: Todo List
+        App.create({
+            app: 'todo',
+            todos: [
+                { id: 1, text: 'Изучить фреймворк', done: true },
+                { id: 2, text: 'Создать приложение', done: false }
+            ],
+            newTodo: '',
+            filter: 'all',
+            
+            get filteredTodos() {
+                if (this.filter === 'active') return this.todos.filter(t => !t.done);
+                if (this.filter === 'completed') return this.todos.filter(t => t.done);
+                return this.todos;
+            },
+            
+            get stats() {
+                return {
+                    total: this.todos.length,
+                    active: this.todos.filter(t => !t.done).length,
+                    completed: this.todos.filter(t => t.done).length
+                };
+            },
+            
+            addTodo() {
+                if (this.newTodo.trim()) {
+                    this.todos.push({
+                        id: Date.now(),
+                        text: this.newTodo.trim(),
+                        done: false
+                    });
+                    this.newTodo = '';
+                }
+            },
+            
+            removeTodo(id) {
+                const index = this.todos.findIndex(t => t.id === id);
+                if (index !== -1) {
+                    this.todos.splice(index, 1);
+                }
+            },
+            
+            clearCompleted() {
+                this.todos = this.todos.filter(t => !t.done);
+            },
+            
+            template: `
+                <div>
+                    <div style="margin-bottom: 20px;">
+                        <input type="text" 
+                               model="newTodo" 
+                               placeholder="Что нужно сделать?"
+                               @keyup="if ($event.key === 'Enter') addTodo()"
+                               style="width: 70%;">
+                        <button @click="addTodo()">➕ Добавить</button>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <button @click="filter = 'all'" 
+                                class="{{ filter === 'all' ? 'badge-success' : '' }}"
+                                style="background: {{ filter === 'all' ? '#42b883' : '#95a5a6' }}">
+                            Все ({{ stats.total }})
+                        </button>
+                        <button @click="filter = 'active'"
+                                style="background: {{ filter === 'active' ? '#42b883' : '#95a5a6' }}">
+                            Активные ({{ stats.active }})
+                        </button>
+                        <button @click="filter = 'completed'"
+                                style="background: {{ filter === 'completed' ? '#42b883' : '#95a5a6' }}">
+                            Завершённые ({{ stats.completed }})
+                        </button>
+                    </div>
+                    
+                    <ul>
+                        <li for="todo in filteredTodos" 
+                            style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" model="todo.done">
+                            <span style="flex: 1; {{ todo.done ? 'text-decoration: line-through; color: #999;' : '' }}">
+                                {{ todo.text }}
+                            </span>
+                            <button @click="removeTodo(todo.id)"
+                                    style="background: #e74c3c; padding: 5px 10px;">
+                                🗑️
+                            </button>
+                        </li>
+                    </ul>
+                    
+                    <div show="filteredTodos.length === 0" style="color: #999; text-align: center; padding: 20px;">
+                        <p>📭 Задач нет</p>
+                    </div>
+                    
+                    <div show="stats.completed > 0" style="margin-top: 15px;">
+                        <button @click="clearCompleted()" style="background: #e74c3c;">
+                            🗑️ Очистить завершённые
+                        </button>
+                    </div>
+                </div>
+            `
+        });
+
+        // Пример 5a: watch() и unwatch()
+        App.create({
+            app: 'watchDemo',
+            count: 0,
+            user: { name: 'Гость', role: 'user' },
+            firstName: 'Иван',
+            lastName: 'Петров',
+            setup() {
+                this.watch('count', (newVal, oldVal, unwatch) => {
+                    console.log('[watch count]', oldVal, '->', newVal);
+                    if (newVal >= 5) unwatch();
+                }, { immediate: true });
+                this.watch('user', (n, o, unwatch) => console.log('[watch user deep]', n), { deep: true });
+                this.watch('user.name', (n, o, unwatch) => console.log('[watch user name]', n));
+                this.watch(() => this.firstName + ' ' + this.lastName, (v, prev, unwatch) => console.log('[watch getter] fullName:', v));
+                this.watch('save()', (args, result, unwatch) => console.log('[watch method] save() вызван, result:', result));
+            },
+            save() {
+                return { ok: true, saved: Date.now() };
+            },
+            template: `
+                <div>
+                    <p><strong>count</strong> (watch прекратится при 5): <button @click="count++">+1</button> {{ count }}</p>
+                    <p><strong>user</strong> (deep): <input type="text" model="user.name" placeholder="имя"> {{ user.name }}, {{ user.role }}</p>
+                    <p><strong>fullName</strong> (геттер): {{ firstName }} {{ lastName }}</p>
+                    <p><strong>save()</strong>: <button @click="save()">Вызвать save()</button></p>
+                    <p style="color: #666; font-size: 12px;">Смотрите консоль браузера.</p>
+                </div>
+            `
+        });
+
+        // Пример 6: Вложенные объекты
+        App.create({
+            app: 'nested',
+            user: {
+                profile: {
+                    name: 'Иван',
+                    age: 25
+                },
+                settings: {
+                    theme: 'dark',
+                    notifications: true
+                }
+            },
+            
+            updateName(newName) {
+                this.user.profile.name = newName;
+            },
+            
+            incrementAge() {
+                this.user.profile.age++;
+            },
+            
+            toggleTheme() {
+                this.user.settings.theme = this.user.settings.theme === 'dark' ? 'light' : 'dark';
+            },
+            
+            template: `
+                <div>
+                    <h4>Профиль пользователя</h4>
+                    <p>Имя: <strong>{{ user.profile.name }}</strong></p>
+                    <p>Возраст: <strong>{{ user.profile.age }}</strong> лет</p>
+                    
+                    <div style="margin: 15px 0;">
+                        <input type="text" model="user.profile.name" placeholder="Имя">
+                        <button @click="incrementAge()">🎂 +1 год</button>
+                    </div>
+                    
+                    <h4>Настройки</h4>
+                    <p>Тема: <span class="badge badge-{{ user.settings.theme === 'dark' ? 'success' : 'warning' }}">
+                        {{ user.settings.theme === 'dark' ? '🌙 Тёмная' : '☀️ Светлая' }}
+                    </span></p>
+                    <p>
+                        <label>
+                            <input type="checkbox" model="user.settings.notifications">
+                            🔔 Уведомления
+                        </label>
+                    </p>
+                    
+                    <button @click="toggleTheme()">🎨 Сменить тему</button>
+                    
+                    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px;">
+                        <h4>Состояние объекта:</h4>
+                        <pre style="background: #fff; padding: 10px; border-radius: 4px; overflow: auto;">{{ JSON.stringify(user, null, 2) }}</pre>
+                    </div>
+                </div>
+            `
+        });
+
+        // Пример 7: Атрибуты с :
+        App.create({
+            app: 'withProps',
+            initialCount: 0,  // Будет переопределено из атрибута :initial-count
+            step: 1,          // Будет переопределено из атрибута :step
+            label: 'Счётчик', // Будет переопределено из атрибута :label
+            count: 0,
+            
+            setup() {
+                // Инициализируем count из initialCount при setup
+                this.count = this.initialCount;
+            },
+            
+            increment() { 
+                this.count += this.step; 
+            },
+            
+            decrement() { 
+                this.count -= this.step; 
+            },
+            
+            template: `
+                <div style="text-align: center; padding: 20px; background: #f0f8ff; border-radius: 8px;">
+                    <h3>{{ label }}</h3>
+                    <p style="color: #666;">Начальное значение: {{ initialCount }}, Шаг: {{ step }}</p>
+                    <h2 style="font-size: 36px; margin: 15px 0;">{{ count }}</h2>
+                    <button @click="increment()">➕ +{{ step }}</button>
+                    <button @click="decrement()">➖ -{{ step }}</button>
+                </div>
+            `
+        });
+
+        // Пример 8: innerHTML как шаблон
+        App.create({
+            app: 'inlineTemplate',
+            title: 'Пример с innerHTML',
+            message: 'Привет, мир!',
+            updateCount: 0,
+            
+            updateMessage() {
+                this.updateCount++;
+            },
+            
+            template: '' // Пустой шаблон - будет использовано innerHTML
+        });
+
+        // Пример 9: Родитель и ребёнок
+        App.create({
+            app: 'parent',
+            sharedCount: 0,
+            userName: 'Пользователь',
+            
+            incrementShared() {
+                this.sharedCount++;
+            },
+            
+            template: `
+                <div class="nested-box">
+                    <h4>🔷 Родительский компонент</h4>
+                    <p>Счётчик родителя: <strong>{{ sharedCount }}</strong></p>
+                    <input type="text" model="userName" placeholder="Ваше имя">
+                    <button @click="incrementShared()">➕ Увеличить счётчик</button>
+                    
+                    <div style="margin-top: 15px;">
+                        <st-app ::app="child" :count="{{ sharedCount }}" :name="{{ userName }}"></st-app>
+                    </div>
+                </div>
+            `
+        });
+
+        App.create({
+            app: 'child',
+            count: 0,    // Будет получен от родителя
+            name: '',    // Будет получен от родителя
+            childMessage: 'Сообщение от ребёнка',
+            
+            template: `
+                <div class="nested-box" style="background: #fff3e0; border-color: #ff9800;">
+                    <h4>🔶 Дочерний компонент</h4>
+                    <p>Получено от родителя:</p>
+                    <ul>
+                        <li>Счётчик: <strong>{{ count }}</strong></li>
+                        <li>Имя: <strong>{{ name }}</strong></li>
+                    </ul>
+                    <input type="text" model="childMessage" placeholder="Сообщение">
+                    <p>{{ childMessage }}</p>
+                </div>
+            `
+        });
+
+        // Пример 10: Трёхуровневая вложенность
+        App.create({
+            app: 'grandparent',
+            level: 'Дедушка',
+            data: 42,
+            
+            updateData() {
+                this.data = Math.floor(Math.random() * 100);
+            },
+            
+            template: `
+                <div class="nested-box">
+                    <h4>🔷 Уровень 1: {{ level }}</h4>
+                    <p>Данные: <strong>{{ data }}</strong></p>
+                    <button @click="updateData()">🎲 Изменить данные</button>
+                    
+                    <div style="margin-top: 15px;">
+                        <st-app ::app="parent2" :data="{{ data }}" :level="'Родитель'"></st-app>
+                    </div>
+                </div>
+            `
+        });
+
+        App.create({
+            app: 'parent2',
+            data: 0,
+            level: '',
+            
+            template: `
+                <div class="nested-box" style="background: #fff3e0; border-color: #ff9800;">
+                    <h4>🔶 Уровень 2: {{ level }}</h4>
+                    <p>Получено: <strong>{{ data }}</strong></p>
+                    
+                    <div style="margin-top: 15px;">
+                        <st-app ::app="grandchild" :data="{{ data }}" :level="'Внук'"></st-app>
+                    </div>
+                </div>
+            `
+        });
+
+        App.create({
+            app: 'grandchild',
+            data: 0,
+            level: '',
+            
+            template: `
+                <div class="nested-box" style="background: #e8f5e9; border-color: #4caf50;">
+                    <h4>🔹 Уровень 3: {{ level }}</h4>
+                    <p>Финальные данные: <strong>{{ data }}</strong></p>
+                    <p style="color: #666; font-size: 12px;">Данные прошли через 3 уровня компонентов!</p>
+                </div>
+            `
+        });
+
+        // Пример 11: Комбинированный (вложенный st-app + атрибут :item + innerHTML как шаблон дочернего)
+        App.create({
+            app: 'combined',
+            items: ['Alpha', 'Beta', 'Gamma'],
+            selectedItem: null,
+            showDetails: false,
+            
+            selectItem(item) {
+                this.selectedItem = item;
+                this.showDetails = true;
+            },
+            
+            template: `
+                <div>
+                    <h3>Комбинированный пример</h3>
+                    <p>Список элементов (клик для выбора):</p>
+                    <ul>
+                        <li for="item in items" 
+                            @click="selectItem(item)"
+                            style="cursor: pointer; background: {{ selectedItem === item ? '#e3f2fd' : 'transparent' }}; padding: 10px; border-radius: 4px;">
+                            {{ $index + 1 }}. {{ item }}
+                        </li>
+                    </ul>
+                    
+                    <div show="showDetails" style="margin-top: 20px;">
+                        <st-app ::app="detailsComponent" :item="{{ selectedItem }}">
+                            <div class="nested-box" style="background: #f3e5f5; border-color: #9c27b0;">
+                                <h4>📋 Детали элемента</h4>
+                                <p>Выбран: <strong>{{ item }}</strong></p>
+                                <p>Длина названия: {{ item ? item.length : 0 }} символов</p>
+                                <button @click="item = item.toUpperCase()">🔠 В верхний регистр</button>
+                                <button @click="item = item.toLowerCase()">🔡 В нижний регистр</button>
+                            </div>
+                        </st-app>
+                    </div>
+                    
+                    <div show="!showDetails" style="margin-top: 20px; color: #999; font-style: italic;">
+                        Выберите элемент для просмотра деталей
+                    </div>
+                </div>
+            `
+        });
+
+        App.create({
+            app: 'detailsComponent',
+            item: '',
+            template: ''
+        });
+    </script>
+
+    <div style="text-align: center; padding: 40px 20px; background: #e8f5e9; margin: 40px 0; border-radius: 8px;">
+        <h2>✅ Все возможности продемонстрированы!</h2>
+        <p>Этот файл показывает полный набор функций фреймворка с рабочими примерами.</p>
+    </div>
+</body>
+</html>
