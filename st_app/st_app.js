@@ -244,18 +244,20 @@ class App extends HTMLElement {
         let proxy = new Proxy(obj, {
             get(target, prop, receiver) {
                 if (prop === '__isReactive') return true;
-                let fullPath = [...path, prop].join('.');
+                const pathSegment = typeof prop === 'symbol' ? '<symbol>' : prop;
+                let fullPath = [...path, pathSegment].join('.');
                 $this.#track(fullPath);
                 let value = Reflect.get(target, prop, receiver);
                 if (value !== null && typeof value === 'object' && !value.__isReactive)
-                    return $this.#createReactiveProxy(value, [...path, prop]);
+                    return $this.#createReactiveProxy(value, [...path, pathSegment]);
                 return value;
             },
             set(target, prop, value, receiver) {
                 let oldValue = target[prop];
                 if (oldValue === value) return true;
                 let result = Reflect.set(target, prop, value, receiver);
-                let fullPath = [...path, prop].join('.');
+                const setPathSegment = typeof prop === 'symbol' ? '<symbol>' : prop;
+                let fullPath = [...path, setPathSegment].join('.');
                 $this.#trigger(fullPath);
                 if (Array.isArray(target) && (prop === 'length' || !isNaN(prop))) {
                     let arrayPath = path.join('.');
@@ -266,7 +268,8 @@ class App extends HTMLElement {
             },
             deleteProperty(target, prop) {
                 let result = Reflect.deleteProperty(target, prop);
-                let fullPath = [...path, prop].join('.');
+                const delPathSegment = typeof prop === 'symbol' ? '<symbol>' : prop;
+                let fullPath = [...path, delPathSegment].join('.');
                 $this.#trigger(fullPath);
                 return result;
             }

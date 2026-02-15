@@ -461,8 +461,8 @@
             { id: 5, name: 'Микроданные для SEO-дружественной страницы', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], groups: [], visibility: 'page' }
         ],
         blocks: [
-            { id: 0, name: 'Шапка сайта', site_types: [{ name: 'Интернет магазин', is_required: true }, { name: 'Лендинг', is_required: true }, { name: 'Корпоративный сайт', is_required: true }], description: 'Основной ориентир пользователя в навигации', content: '"Логотип (кликабельный, ведущий на главную), Главное меню, Контактные данные (телефон, email), Кнопки CTA (например, “Заказать звонок”, “Оставить заявку”)"', design: 1, frontend: 4, backend: 4, pages: [] },
-            { id: 1, name: 'Подвал сайта', site_types: [{ name: 'Интернет магазин', is_required: true }, { name: 'Лендинг', is_required: true }, { name: 'Корпоративный сайт', is_required: true }], description: 'Понимают как системный блок, который закрывает страницу', content: '"Политика конфиденциальности / условия, Повтор меню/ссылки, Соцсети"', design: 1, frontend: 3, backend: 2, pages: [] },
+            { id: 0, name: 'Шапка сайта', once: true, site_types: [{ name: 'Интернет магазин', is_required: true }, { name: 'Лендинг', is_required: true }, { name: 'Корпоративный сайт', is_required: true }], description: 'Основной ориентир пользователя в навигации', content: '"Логотип (кликабельный, ведущий на главную), Главное меню, Контактные данные (телефон, email), Кнопки CTA (например, “Заказать звонок”, “Оставить заявку”)"', design: 1, frontend: 4, backend: 4, pages: [] },
+            { id: 1, name: 'Подвал сайта', once: true, site_types: [{ name: 'Интернет магазин', is_required: true }, { name: 'Лендинг', is_required: true }, { name: 'Корпоративный сайт', is_required: true }], description: 'Понимают как системный блок, который закрывает страницу', content: '"Политика конфиденциальности / условия, Повтор меню/ссылки, Соцсети"', design: 1, frontend: 3, backend: 2, pages: [] },
             { id: 2, name: 'Главный экран (Hero)', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Это то, что пользователь видит без прокрутки, первый экран', content: '"Заголовок — четкое позиционирование компании, Подзаголовок — ключевое УТП, Кнопки призыва к действию (CTA), Фоновое изображение/видео или иллюстрация"', design: 2, frontend: 3, backend: 3, pages: [] },
             { id: 3, name: 'Список услуг', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Блок с ключевыми услугами или продуктами', content: '"Список основных предложений, Краткие описания, Ссылки на соответствующие разделы"', design: 2, frontend: 2, backend: 2, pages: [] },
             { id: 4, name: 'Отфильтрованный список услуг', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Блок с ключевыми услугами/товарами, отобранных по фильтру/категории', content: '"Список основных предложений, Краткие описания, Ссылки на соответствующие разделы"', design: 2, frontend: 2, backend: 2, pages: [] },
@@ -574,6 +574,24 @@
                 this._selectedBlocks[this.selectedType]?.[this.selectedPage?.id]?.includes(block.id)
             );
         },
+        get blocksForCalculation() {
+            const blockIdCount = {};
+            const pages = this.selectedPages || [];
+            const type = this.selectedType;
+            if (!type) return [];
+            for (const page of pages) {
+                const ids = this._selectedBlocks[type]?.[page.id] || [];
+                for (const id of ids) blockIdCount[id] = (blockIdCount[id] || 0) + 1;
+            }
+            const result = [];
+            for (const blockId in blockIdCount) {
+                const block = data.blocks.find(b => b.id === parseInt(blockId, 10));
+                if (!block) continue;
+                const count = block.once === true ? 1 : blockIdCount[blockId];
+                for (let i = 0; i < count; i++) result.push(block);
+            }
+            return result;
+        },
         get availableBlocks() {
             return data.blocks.filter(block =>
                 block.site_types.some(siteType => siteType.name === this.selectedType) &&
@@ -608,13 +626,13 @@
                 : '';
         },
         get designHours() {
-            return (this.selectedBlocks.reduce((sum, block) => sum + block.design, 0) * Math.max(1, this.data.design_incrementing_per_screen.slice(0, this.screen_count - 1).reduce((sum, num) => sum + num, 0))).toFixed(1);
+            return (this.blocksForCalculation.reduce((sum, block) => sum + block.design, 0) * Math.max(1, this.data.design_incrementing_per_screen.slice(0, this.screen_count - 1).reduce((sum, num) => sum + num, 0))).toFixed(1);
         },
         get frontendHours() {
-            return (this.selectedBlocks.reduce((sum, block) => sum + block.frontend, 0) * Math.max(1, this.data.frontend_incrementing_per_screen.slice(0, this.screen_count - 1).reduce((sum, num) => sum + num, 0))).toFixed(1);
+            return (this.blocksForCalculation.reduce((sum, block) => sum + block.frontend, 0) * Math.max(1, this.data.frontend_incrementing_per_screen.slice(0, this.screen_count - 1).reduce((sum, num) => sum + num, 0))).toFixed(1);
         },
         get backendHours() {
-            return (this.selectedBlocks.reduce((sum, block) => sum + block.backend, 0)).toFixed(1)
+            return (this.blocksForCalculation.reduce((sum, block) => sum + block.backend, 0)).toFixed(1)
         },
     });
     
