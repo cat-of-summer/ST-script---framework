@@ -11,8 +11,19 @@
     <style>
         section {
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
+            grid-template-columns: repeat(10, 1fr);
             gap: 10px;
+
+            st-app[\:columns="1"] { grid-column: span 1; }
+            st-app[\:columns="2"] { grid-column: span 2; }
+            st-app[\:columns="3"] { grid-column: span 3; }
+            st-app[\:columns="4"] { grid-column: span 4; }
+            st-app[\:columns="5"] { grid-column: span 5; }
+            st-app[\:columns="6"] { grid-column: span 6; }
+            st-app[\:columns="7"] { grid-column: span 7; }
+            st-app[\:columns="8"] { grid-column: span 8; }
+            st-app[\:columns="9"] { grid-column: span 9; }
+            st-app[\:columns="10"] { grid-column: span 10; }
 
             div {
                 display: flex;
@@ -20,9 +31,9 @@
         }
     </style>
 
-    <st-app :data='{"name":"John","age":30,"address":{"city":"New York"}}' :direction="column" :columns="5">
-        <section>
-            <div style="flex-direction: {{ direction }}; grid-column: span {{ columns }};">
+    <section>
+        <st-app :data='{"name":"John","age":30,"address":{"city":"New York"}}' :direction="column" :columns="5">
+            <div style="flex-direction: {{ direction }};">
                 <input type="text" #model="data.name">
                 <input type="text" #model="data.age">
                 <input type="text" #model="data.address.city">
@@ -30,10 +41,23 @@
                     <option value="column">Column</option>
                     <option value="row">Row</option>
                 </select>
-                <input #show="direction === 'column'" type="range" min="1" max="5" #model="columns"/>
+                <input #show="direction === 'column'" type="range" min="1" max="10" #model="columns"/>
             </div>
-        </section>
-    </st-app>
+        </st-app>
+        <st-app :data='{"name":"John","age":30,"address":{"city":"New York"}}' :direction="column" :columns="5">
+            <div style="flex-direction: {{ direction }};">
+                <input type="text" #model="data.name">
+                <input type="text" #model="data.age">
+                <input type="text" #model="data.address.city">
+                <select #model="direction">
+                    <option value="column">Column</option>
+                    <option value="row">Row</option>
+                </select>
+                <input #show="direction === 'column'" type="range" min="1" max="10" #model="columns"/>
+            </div>
+        </st-app>
+    </section>
+
 
 </body>
 </html>
