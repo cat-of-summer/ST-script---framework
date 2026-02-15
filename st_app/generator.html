@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Конструктор</title>
+    <title>Конструктор сайта</title>
     <script src="st_app.js"></script>
     <style>
         html, body {
@@ -231,6 +231,10 @@
                             display: flex;
                             flex-direction: column;
                             transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+
+                            ul {
+                                padding: 0;
+                            }
                         }
                         .float.visible {
                             visibility: visible;
@@ -372,23 +376,35 @@
                                 @click="addBlock(block.id)">
                                 +
                             </button>
-                            <div class="float {{ expandedBlockId === block.id ? 'visible' : '' }}">
+                            <div class="float {{ expandedBlockKey === 'available-' + block.id ? 'visible' : '' }}">
                                 <span>Описание: {{ block.description }}</span>
                                 <span>Содержание: {{ block.content }}</span>
+                                <ul>
+                                    <span>Оценка разработки:</span>
+                                    <li>Дизайн: {{block.design}}</li>
+                                    <li>Фронтэнд: {{block.frontend}}</li>
+                                    <li>Бэкэнд: {{block.backend}}</li>
+                                </ul>
                             </div>
                         </li>
                     </ul>
                     <ul class="selectedBlocks">
                         <span #show="selectedBlocks?.length">Выбранные блоки</span>
-                        <li #for="block in selectedBlocks" @click="toggleFloat(block.id)">
+                        <li #for="block in selectedBlocks" @click="toggleFloat(block.id, $index)">
                             <span>{{ block.name }}</span>
                             <button
-                                @click="removeBlock(block.id)">
+                                @click="removeBlock(block.id, $index)">
                                 -
                             </button>
-                            <div class="float {{ expandedBlockId === block.id ? 'visible' : '' }}">
+                            <div class="float {{ expandedBlockKey === 'selected-' + block.id + '-' + $index ? 'visible' : '' }}">
                                 <span>Описание: {{ block.description }}</span>
                                 <span>Содержание: {{ block.content }}</span>
+                                <ul>
+                                    <span>Оценка разработки:</span>
+                                    <li>Дизайн: {{block.design}}</li>
+                                    <li>Фронтэнд: {{block.frontend}}</li>
+                                    <li>Бэкэнд: {{block.backend}}</li>
+                                </ul>
                             </div>
                         </li>
                     </ul>
@@ -461,48 +477,48 @@
             { id: 5, name: 'Микроданные для SEO-дружественной страницы', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], groups: [], visibility: 'page' }
         ],
         blocks: [
-            { id: 0, name: 'Шапка сайта', once: true, site_types: [{ name: 'Интернет магазин', is_required: true }, { name: 'Лендинг', is_required: true }, { name: 'Корпоративный сайт', is_required: true }], description: 'Основной ориентир пользователя в навигации', content: '"Логотип (кликабельный, ведущий на главную), Главное меню, Контактные данные (телефон, email), Кнопки CTA (например, “Заказать звонок”, “Оставить заявку”)"', design: 1, frontend: 4, backend: 4, pages: [] },
-            { id: 1, name: 'Подвал сайта', once: true, site_types: [{ name: 'Интернет магазин', is_required: true }, { name: 'Лендинг', is_required: true }, { name: 'Корпоративный сайт', is_required: true }], description: 'Понимают как системный блок, который закрывает страницу', content: '"Политика конфиденциальности / условия, Повтор меню/ссылки, Соцсети"', design: 1, frontend: 3, backend: 2, pages: [] },
-            { id: 2, name: 'Главный экран (Hero)', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Это то, что пользователь видит без прокрутки, первый экран', content: '"Заголовок — четкое позиционирование компании, Подзаголовок — ключевое УТП, Кнопки призыва к действию (CTA), Фоновое изображение/видео или иллюстрация"', design: 2, frontend: 3, backend: 3, pages: [] },
-            { id: 3, name: 'Список услуг', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Блок с ключевыми услугами или продуктами', content: '"Список основных предложений, Краткие описания, Ссылки на соответствующие разделы"', design: 2, frontend: 2, backend: 2, pages: [] },
-            { id: 4, name: 'Отфильтрованный список услуг', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Блок с ключевыми услугами/товарами, отобранных по фильтру/категории', content: '"Список основных предложений, Краткие описания, Ссылки на соответствующие разделы"', design: 2, frontend: 2, backend: 2, pages: [] },
-            { id: 5, name: 'Кейсы', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Если для бизнеса это важно (B2B / услуги / решения)', content: '"Примеры реализованных проектов, Краткое описание результатов"', design: 2, frontend: 2, backend: 3, pages: [] },
-            { id: 6, name: 'Список новостей', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Короткие анонсы актуальных публикаций', content: '"Заголовки статей, Даты, Линки на детальные статьи"', design: 2, frontend: 3, backend: 3, pages: [] },
-            { id: 7, name: 'Блок призыва к действию (CTA)', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Дополнительный призыв к действию (может повторяться несколько раз)', content: '"Кнопка «Заказать бесплатную консультацию», Краткий текст-мотиватор"', design: 1, frontend: 1, backend: 1, pages: [] },
-            { id: 8, name: 'Преимущества', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Суть — показать выгоды и отличия, которые важны пользователю', content: '"Иконки + короткие тексты, Факты/цифры (например, 10+ лет на рынке, 500+ проектов), Гарантии качества"', design: 2, frontend: 2, backend: 2, pages: [] },
-            { id: 9, name: 'Блок «О нас»', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Короткая история или описание бизнеса', content: '"Пару предложений о направлении, Основные принципы/миссия, Возможно — маленькие иконки “почему мы”"', design: 1, frontend: 2, backend: 2, pages: [] },
-            { id: 10, name: 'История компании', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Блок с описанием истории становления компании', content: '"Когда и как была основана компания, Ключевые этапы развития, Достижения"', design: 1, frontend: 2, backend: 2, pages: [] },
-            { id: 11, name: 'Миссия и ценности', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Главная цель компании, ценности и видение', content: '"Миссия, Основные ценности, Видение будущего развития"', design: 2, frontend: 2, backend: 2, pages: [] },
-            { id: 12, name: 'Команда', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Команда и руководство', content: '"Фотографии ключевых сотрудников / руководителей, Краткие описания профессионального опыта, Роли в компании"', design: 2, frontend: 2, backend: 3, pages: [] },
-            { id: 13, name: 'Отзывы клиентов', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Очень полезный блок для доверия', content: '"Отзывы с именами/компаниями, Рейтинг / логотипы клиентов"', design: 1, frontend: 4, backend: 3, pages: [] },
-            { id: 14, name: 'Контактная информация', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Часто повторяют основные контакты ближе к футеру', content: '"Телефон, email, Адрес / карта, Форма обратной связи"', design: 1, frontend: 1, backend: 1, pages: [] },
-            { id: 15, name: 'Список адресов', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Информация о местонахождении офиса/офисов', content: '"Полный почтовый адрес (город, улица, дом, индекс), Адреса филиалов, Указания/ориентиры"', design: 0.2, frontend: 1, backend: 1, pages: [] },
-            { id: 16, name: 'Режим работы', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Информация о рабочем времени компании', content: '"Часы и дни работы (с указанием выходных), Время, когда можно звонить/посещать офис"', design: 0.2, frontend: 1, backend: 1, pages: [] },
-            { id: 17, name: 'Карта', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Карта с указанием расположения офиса', content: '"Встроенная карта (Google/Яндекс) с маркером, Возможность масштабирования и прокладки маршрута"', design: 0.2, frontend: 2, backend: 3, pages: [] },
-            { id: 18, name: 'Контактная форма', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Простая форма, чтобы отправить сообщение прямо с сайта', content: '"Поля: имя, телефон или email, текст сообщения, капча, Кнопка отправки"', design: 1, frontend: 3, backend: 2, pages: [] },
-            { id: 19, name: 'Реквизиты компании', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Официальные данные компании', content: '"Полное юридическое имя, ИНН, ОГРН, БИК, банковские реквизиты"', design: 0.2, frontend: 1, backend: 1, pages: [] },
-            { id: 20, name: 'Социальные сети', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Ссылки на соцсети и мессенджеры', content: '"Иконки и ссылки на соцсети (Facebook, LinkedIn, Instagram и др.), Ссылки на мессенджеры (WhatsApp, Telegram)"', design: 0.2, frontend: 1, backend: 1, pages: [] },
-            { id: 21, name: 'Статистика', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Краткая информационная выжимка', content: '"Графики, ключевые цифры, количества"', design: 1, frontend: 1, backend: 1, pages: [] },
-            { id: 22, name: 'Список партнёров', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Список партнёров и логотипов', content: '"Список партнёров, Рейтинг / логотипы партнёров"', design: 1, frontend: 1, backend: 3, pages: [] },
-            { id: 23, name: 'Список разделов', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Блок с ключевыми разделами товаров / услуг', content: '"Список основных предложений, Краткие описания, Фоновое изображение, Ссылки на соответствующие разделы"', design: 3, frontend: 3, backend: 4, pages: [] },
-            { id: 24, name: 'Блок цен', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Информация о цене или диапазоне цен для выбранной услуги', content: '"Таблица цен или блок «от …», Опции/варианты пакетов работ, Что входит в каждый уровень, Кнопки для покупки"', design: 3, frontend: 2, backend: 2, pages: [] },
-            { id: 25, name: 'Таблица корзины', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Контролы для изменения количества товара прямо в корзине', content: '"Плюс/минус или поле ввода количества, Автопересчет стоимости позиции и общей суммы"', design: 2, frontend: 5, backend: 2, pages: [] },
-            { id: 26, name: 'Промокоды', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Возможность применить промо или купон', content: '"Поле ввода промокода, Кнопка «Применить», Отображение суммы скидки"', design: 1, frontend: 4, backend: 2, pages: [] },
-            { id: 27, name: 'Итог заказа', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Отображение полной суммы к оплате', content: '"Сумма товаров, Скидки / акции, Возможные налоги или доставка"', design: 1, frontend: 2, backend: 1, pages: [] },
-            { id: 28, name: 'Форма данных клиента', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Форма для ввода контактной информации клиента', content: '"Имя и фамилия, Email, Телефон, Опционально: аккаунт / регистрация / вход"', design: 2, frontend: 2, backend: 2, pages: [] },
-            { id: 29, name: 'Доставка', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Выбор способа доставки и адреса', content: '"Адрес доставки (улица, дом, город, индекс), Выбор способа доставки: курьер, почта, пункт выдачи, Сроки доставки, Стоимость доставки"', design: 2, frontend: 2, backend: 6, pages: [] },
-            { id: 30, name: 'Оплата', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Блок для выбора способа оплаты заказа', content: '"Онлайн-платеж (карта, электронные деньги), Оплата при получении (наличными, картой), Частичная оплата, рассрочка (если есть)"', design: 2, frontend: 3, backend: 6, pages: [] },
-            { id: 31, name: 'Форма поиска', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Возможность изменить запрос прямо на странице', content: '"Поле ввода текста, Кнопка «Поиск»"', design: 0.5, frontend: 2, backend: 2, pages: [] },
-            { id: 32, name: 'Результаты поиска', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Основной блок с найденными элементами', content: '"Карточка товара, услуги и т.п."', design: 1, frontend: 2, backend: 4, pages: [] },
-            { id: 33, name: 'Пагинация', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Пагинация для перелистывания списка', content: '"Кнопки, буллеты"', design: 0.5, frontend: 1, backend: 1, pages: [] },
-            { id: 34, name: 'Фильтрация / Сортировка / Поиск', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Группировка услуг по темам или видам работ, сортировка, поиск', content: '"Список категорий/тегов, Переключение сортировки, Поле для поиска, Фильтры по тематике услуг"', design: 2, frontend: 4, backend: 6, pages: [] },
-            { id: 35, name: 'Часто задаваемые вопросы', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Ответы на типичные вопросы, которые возникают у потенциального клиента', content: '"Вопросы/ответы (свернутые аккордеоны)"', design: 1, frontend: 1, backend: 2, pages: [] },
-            { id: 36, name: 'Таблица сравнения', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Таблица со списком товаров и их характеристиками', content: '"Карточка товара, список характеристик товара"', design: 3, frontend: 2, backend: 6, pages: [] },
-            { id: 37, name: 'Навигация личного кабинета', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Основная навигация по личному кабинету', content: '"Ссылки на ключевые разделы: «Мои заказы», «Профиль», «Адреса», «Оплата», «История», «Сообщения»; Активный раздел подсвечен"', design: 1, frontend: 2, backend: 4, pages: [{id: 23, is_required: true}, {id: 24, is_required: true}, {id: 25, is_required: true}] },
-            { id: 38, name: 'Профиль', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Управление контактной и личной информацией', content: '"Имя, фамилия; Email, телефон; Пароль и возможность смены; Настройки уведомлений; Список сохранённых адресов"', design: 3, frontend: 4, backend: 4, pages: [{id: 23, is_required: true}, {id: 24, is_required: true}, {id: 25, is_required: true}] },
-            { id: 39, name: 'Список заказов', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Список заказов пользователя', content: '"Список заказов (номер, дата, статус), Краткая информация по заказу (товары, сумма, способ доставки)"', design: 2, frontend: 2, backend: 4, pages: [] },
-            { id: 40, name: 'Подтверждение регистрации', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Форма для ввода кода подтверждения регистрации', content: '"Поле для ввода кода"', design: 1, frontend: 1, backend: 2, pages: [{id: 23, is_required: true}, {id: 24, is_required: true}, {id: 25, is_required: true}] },
-            { id: 41, name: 'Подтверждение восстановления пароля', site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Форма для ввода кода восстановления пароля', content: '"Поле для ввода кода"', design: 1, frontend: 1, backend: 2, pages: [{id: 23, is_required: true}, {id: 24, is_required: true}, {id: 25, is_required: true}] },
+            { id: 0, name: 'Шапка сайта', once: true, multiple: false, site_types: [{ name: 'Интернет магазин', is_required: true }, { name: 'Лендинг', is_required: true }, { name: 'Корпоративный сайт', is_required: true }], description: 'Основной ориентир пользователя в навигации', content: '"Логотип (кликабельный, ведущий на главную), Главное меню, Контактные данные (телефон, email), Кнопки CTA (например, “Заказать звонок”, “Оставить заявку”)"', design: 1, frontend: 4, backend: 4, pages: [] },
+            { id: 1, name: 'Подвал сайта', once: true, multiple: false, site_types: [{ name: 'Интернет магазин', is_required: true }, { name: 'Лендинг', is_required: true }, { name: 'Корпоративный сайт', is_required: true }], description: 'Понимают как системный блок, который закрывает страницу', content: '"Политика конфиденциальности / условия, Повтор меню/ссылки, Соцсети"', design: 1, frontend: 3, backend: 2, pages: [] },
+            { id: 2, name: 'Главный экран (Hero)', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Это то, что пользователь видит без прокрутки, первый экран', content: '"Заголовок — четкое позиционирование компании, Подзаголовок — ключевое УТП, Кнопки призыва к действию (CTA), Фоновое изображение/видео или иллюстрация"', design: 2, frontend: 3, backend: 3, pages: [] },
+            { id: 3, name: 'Список услуг', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Блок с ключевыми услугами или продуктами', content: '"Список основных предложений, Краткие описания, Ссылки на соответствующие разделы"', design: 2, frontend: 2, backend: 2, pages: [] },
+            { id: 4, name: 'Отфильтрованный список услуг', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Блок с ключевыми услугами/товарами, отобранных по фильтру/категории', content: '"Список основных предложений, Краткие описания, Ссылки на соответствующие разделы"', design: 2, frontend: 2, backend: 2, pages: [] },
+            { id: 5, name: 'Кейсы', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Если для бизнеса это важно (B2B / услуги / решения)', content: '"Примеры реализованных проектов, Краткое описание результатов"', design: 2, frontend: 2, backend: 3, pages: [] },
+            { id: 6, name: 'Список новостей', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Короткие анонсы актуальных публикаций', content: '"Заголовки статей, Даты, Линки на детальные статьи"', design: 2, frontend: 3, backend: 3, pages: [] },
+            { id: 7, name: 'Блок призыва к действию (CTA)', multiple: true, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Дополнительный призыв к действию (может повторяться несколько раз)', content: '"Кнопка «Заказать бесплатную консультацию», Краткий текст-мотиватор"', design: 1, frontend: 1, backend: 1, pages: [] },
+            { id: 8, name: 'Преимущества', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Суть — показать выгоды и отличия, которые важны пользователю', content: '"Иконки + короткие тексты, Факты/цифры (например, 10+ лет на рынке, 500+ проектов), Гарантии качества"', design: 2, frontend: 2, backend: 2, pages: [] },
+            { id: 9, name: 'Блок «О нас»', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Короткая история или описание бизнеса', content: '"Пару предложений о направлении, Основные принципы/миссия, Возможно — маленькие иконки “почему мы”"', design: 1, frontend: 2, backend: 2, pages: [] },
+            { id: 10, name: 'История компании', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Блок с описанием истории становления компании', content: '"Когда и как была основана компания, Ключевые этапы развития, Достижения"', design: 1, frontend: 2, backend: 2, pages: [] },
+            { id: 11, name: 'Миссия и ценности', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Главная цель компании, ценности и видение', content: '"Миссия, Основные ценности, Видение будущего развития"', design: 2, frontend: 2, backend: 2, pages: [] },
+            { id: 12, name: 'Команда', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Команда и руководство', content: '"Фотографии ключевых сотрудников / руководителей, Краткие описания профессионального опыта, Роли в компании"', design: 2, frontend: 2, backend: 3, pages: [] },
+            { id: 13, name: 'Отзывы клиентов', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Очень полезный блок для доверия', content: '"Отзывы с именами/компаниями, Рейтинг / логотипы клиентов"', design: 1, frontend: 4, backend: 3, pages: [] },
+            { id: 14, name: 'Контактная информация', multiple: true, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Часто повторяют основные контакты ближе к футеру', content: '"Телефон, email, Адрес / карта, Форма обратной связи"', design: 1, frontend: 1, backend: 1, pages: [] },
+            { id: 15, name: 'Список адресов', multiple: true, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Информация о местонахождении офиса/офисов', content: '"Полный почтовый адрес (город, улица, дом, индекс), Адреса филиалов, Указания/ориентиры"', design: 0.2, frontend: 1, backend: 1, pages: [] },
+            { id: 16, name: 'Режим работы', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Информация о рабочем времени компании', content: '"Часы и дни работы (с указанием выходных), Время, когда можно звонить/посещать офис"', design: 0.2, frontend: 1, backend: 1, pages: [] },
+            { id: 17, name: 'Карта', multiple: true, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Карта с указанием расположения офиса', content: '"Встроенная карта (Google/Яндекс) с маркером, Возможность масштабирования и прокладки маршрута"', design: 0.2, frontend: 2, backend: 3, pages: [] },
+            { id: 18, name: 'Контактная форма', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Простая форма, чтобы отправить сообщение прямо с сайта', content: '"Поля: имя, телефон или email, текст сообщения, капча, Кнопка отправки"', design: 1, frontend: 3, backend: 2, pages: [] },
+            { id: 19, name: 'Реквизиты компании', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Официальные данные компании', content: '"Полное юридическое имя, ИНН, ОГРН, БИК, банковские реквизиты"', design: 0.2, frontend: 1, backend: 1, pages: [] },
+            { id: 20, name: 'Социальные сети', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Ссылки на соцсети и мессенджеры', content: '"Иконки и ссылки на соцсети (Facebook, LinkedIn, Instagram и др.), Ссылки на мессенджеры (WhatsApp, Telegram)"', design: 0.2, frontend: 1, backend: 1, pages: [] },
+            { id: 21, name: 'Статистика', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Краткая информационная выжимка', content: '"Графики, ключевые цифры, количества"', design: 1, frontend: 1, backend: 1, pages: [] },
+            { id: 22, name: 'Список партнёров', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Список партнёров и логотипов', content: '"Список партнёров, Рейтинг / логотипы партнёров"', design: 1, frontend: 1, backend: 3, pages: [] },
+            { id: 23, name: 'Список разделов', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Блок с ключевыми разделами товаров / услуг', content: '"Список основных предложений, Краткие описания, Фоновое изображение, Ссылки на соответствующие разделы"', design: 3, frontend: 3, backend: 4, pages: [] },
+            { id: 24, name: 'Блок цен', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Информация о цене или диапазоне цен для выбранной услуги', content: '"Таблица цен или блок «от …», Опции/варианты пакетов работ, Что входит в каждый уровень, Кнопки для покупки"', design: 3, frontend: 2, backend: 2, pages: [] },
+            { id: 25, name: 'Таблица корзины', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Контролы для изменения количества товара прямо в корзине', content: '"Плюс/минус или поле ввода количества, Автопересчет стоимости позиции и общей суммы"', design: 2, frontend: 5, backend: 2, pages: [] },
+            { id: 26, name: 'Промокоды', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Возможность применить промо или купон', content: '"Поле ввода промокода, Кнопка «Применить», Отображение суммы скидки"', design: 1, frontend: 4, backend: 2, pages: [] },
+            { id: 27, name: 'Итог заказа', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Отображение полной суммы к оплате', content: '"Сумма товаров, Скидки / акции, Возможные налоги или доставка"', design: 1, frontend: 2, backend: 1, pages: [] },
+            { id: 28, name: 'Форма данных клиента', multiple: true, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Форма для ввода контактной информации клиента', content: '"Имя и фамилия, Email, Телефон, Опционально: аккаунт / регистрация / вход"', design: 2, frontend: 2, backend: 2, pages: [] },
+            { id: 29, name: 'Доставка', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Выбор способа доставки и адреса', content: '"Адрес доставки (улица, дом, город, индекс), Выбор способа доставки: курьер, почта, пункт выдачи, Сроки доставки, Стоимость доставки"', design: 2, frontend: 2, backend: 6, pages: [] },
+            { id: 30, name: 'Оплата', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Блок для выбора способа оплаты заказа', content: '"Онлайн-платеж (карта, электронные деньги), Оплата при получении (наличными, картой), Частичная оплата, рассрочка (если есть)"', design: 2, frontend: 3, backend: 6, pages: [] },
+            { id: 31, name: 'Форма поиска', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Возможность изменить запрос прямо на странице', content: '"Поле ввода текста, Кнопка «Поиск»"', design: 0.5, frontend: 2, backend: 2, pages: [] },
+            { id: 32, name: 'Результаты поиска', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Основной блок с найденными элементами', content: '"Карточка товара, услуги и т.п."', design: 1, frontend: 2, backend: 4, pages: [] },
+            { id: 33, name: 'Пагинация', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Пагинация для перелистывания списка', content: '"Кнопки, буллеты"', design: 0.5, frontend: 1, backend: 1, pages: [] },
+            { id: 34, name: 'Фильтрация / Сортировка / Поиск', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Группировка услуг по темам или видам работ, сортировка, поиск', content: '"Список категорий/тегов, Переключение сортировки, Поле для поиска, Фильтры по тематике услуг"', design: 2, frontend: 4, backend: 6, pages: [] },
+            { id: 35, name: 'Часто задаваемые вопросы', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Ответы на типичные вопросы, которые возникают у потенциального клиента', content: '"Вопросы/ответы (свернутые аккордеоны)"', design: 1, frontend: 1, backend: 2, pages: [] },
+            { id: 36, name: 'Таблица сравнения', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Таблица со списком товаров и их характеристиками', content: '"Карточка товара, список характеристик товара"', design: 3, frontend: 2, backend: 6, pages: [] },
+            { id: 37, name: 'Навигация личного кабинета', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Основная навигация по личному кабинету', content: '"Ссылки на ключевые разделы: «Мои заказы», «Профиль», «Адреса», «Оплата», «История», «Сообщения»; Активный раздел подсвечен"', design: 1, frontend: 2, backend: 4, pages: [{id: 23, is_required: true}, {id: 24, is_required: true}, {id: 25, is_required: true}] },
+            { id: 38, name: 'Профиль', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Управление контактной и личной информацией', content: '"Имя, фамилия; Email, телефон; Пароль и возможность смены; Настройки уведомлений; Список сохранённых адресов"', design: 3, frontend: 4, backend: 4, pages: [{id: 23, is_required: true}, {id: 24, is_required: true}, {id: 25, is_required: true}] },
+            { id: 39, name: 'Список заказов', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Список заказов пользователя', content: '"Список заказов (номер, дата, статус), Краткая информация по заказу (товары, сумма, способ доставки)"', design: 2, frontend: 2, backend: 4, pages: [] },
+            { id: 40, name: 'Подтверждение регистрации', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Форма для ввода кода подтверждения регистрации', content: '"Поле для ввода кода"', design: 1, frontend: 1, backend: 2, pages: [{id: 23, is_required: true}, {id: 24, is_required: true}, {id: 25, is_required: true}] },
+            { id: 41, name: 'Подтверждение восстановления пароля', multiple: false, site_types: [{ name: 'Интернет магазин', is_required: false }, { name: 'Лендинг', is_required: false }, { name: 'Корпоративный сайт', is_required: false }], description: 'Форма для ввода кода восстановления пароля', content: '"Поле для ввода кода"', design: 1, frontend: 1, backend: 2, pages: [{id: 23, is_required: true}, {id: 24, is_required: true}, {id: 25, is_required: true}] },
         ]
     };
 
@@ -551,28 +567,28 @@
                 this.selectedPage = null;
         },
         selectedPage: null,
-        expandedBlockId: null,
+        expandedBlockKey: null,
         _floatCloseTimeout: null,
-        toggleFloat(blockId) {
+        toggleFloat(blockId, index) {
+            const newKey = index !== undefined ? 'selected-' + blockId + '-' + index : 'available-' + blockId;
             if (this._floatCloseTimeout) {
                 clearTimeout(this._floatCloseTimeout);
                 this._floatCloseTimeout = null;
             }
-            if (this.expandedBlockId === blockId) {
-                this.expandedBlockId = null;
+            if (this.expandedBlockKey === newKey) {
+                this.expandedBlockKey = null;
                 return;
             }
-            this.expandedBlockId = blockId;
+            this.expandedBlockKey = newKey;
             this._floatCloseTimeout = setTimeout(() => {
-                this.expandedBlockId = null;
+                this.expandedBlockKey = null;
                 this._floatCloseTimeout = null;
             }, 3000);
         },
         _selectedBlocks: {},
         get selectedBlocks() {
-            return data.blocks.filter(block =>
-                this._selectedBlocks[this.selectedType]?.[this.selectedPage?.id]?.includes(block.id)
-            );
+            const ids = this._selectedBlocks[this.selectedType]?.[this.selectedPage?.id] || [];
+            return ids.map(id => data.blocks.find(b => b.id === id)).filter(Boolean);
         },
         get blocksForCalculation() {
             const blockIdCount = {};
@@ -587,24 +603,35 @@
             for (const blockId in blockIdCount) {
                 const block = data.blocks.find(b => b.id === parseInt(blockId, 10));
                 if (!block) continue;
-                const count = block.once === true ? 1 : blockIdCount[blockId];
+                const count = (block.once || !block.multiple) ? Math.min(1, blockIdCount[blockId]) : blockIdCount[blockId];
                 for (let i = 0; i < count; i++) result.push(block);
             }
             return result;
         },
         get availableBlocks() {
+            const ids = this._selectedBlocks[this.selectedType]?.[this.selectedPage?.id] || [];
             return data.blocks.filter(block =>
                 block.site_types.some(siteType => siteType.name === this.selectedType) &&
                 (block.pages.length === 0 || block.pages.some(page => page.id === this.selectedPage?.id)) &&
-                !this._selectedBlocks[this.selectedType]?.[this.selectedPage?.id]?.includes(block.id)
+                (!(block.once || block.multiple === false) || !ids.includes(block.id))
             );
         },
         addBlock(block_id) {
-            if (!this._selectedBlocks[this.selectedType][this.selectedPage.id].includes(block_id))
-                this._selectedBlocks[this.selectedType][this.selectedPage.id].push(block_id);
+            const arr = this._selectedBlocks[this.selectedType][this.selectedPage.id];
+            const block = data.blocks.find(b => b.id === block_id);
+            if (!block) return;
+            if (block.once === true) {
+                if (!arr.includes(block_id)) arr.push(block_id);
+                return;
+            }
+            if (block.multiple === false) {
+                if (!arr.includes(block_id)) arr.push(block_id);
+                return;
+            }
+            arr.push(block_id);
         },
-        removeBlock(block_id) {
-            this._selectedBlocks[this.selectedType][this.selectedPage.id] = this._selectedBlocks[this.selectedType][this.selectedPage.id].filter(id => id !== block_id);
+        removeBlock(block_id, index) {
+            this._selectedBlocks[this.selectedType][this.selectedPage.id].splice(index, 1);
         },
         isPageRequired(page) {
             if (page.site_types.some(siteType => siteType.name === this.selectedType && siteType.is_required))
