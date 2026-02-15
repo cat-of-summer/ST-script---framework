@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Конструктор</title>
+    <script src="st_app.js"></script>
+    <style>
+        st-app {
+            .site_types {
+                cursor: pointer
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <st-app ::app="site_constructor">
+        <div class="site_types">
+            <ul>
+                <li #for="type in data.site_types" 
+                    @click="selectedType = type"
+                    class="{{ selectedType === type ? 'active' : '' }}">
+                    {{ type }}
+                </li>
+            </ul>
+        </div>
+        <div class="pages">
+            <ul class="availablePages">
+                <li #for="page in availablePages">
+                    <span>
+                        {{ page.name }}
+                    </span>
+                    <button
+                        @click="addPage(page.id)">
+                        +
+                    </button>
+                </li>
+            </ul>
+            <div>
+                <ul class="selectedPages">
+                    <li #for="page in selectedPages">
+                        <span
+                            @click="selectedPage = page">
+                            {{ page.name }}
+                        </span>
+                        <button
+                            @click="removePage(page.id)">
+                            -
+                        </button>
+                    </li>
+                </ul>
+                <div class="selectedPage">
+                    <span>{{ selectedPage?.name }}</span>
+                    <!-- <ul>
+                        <li #for="page in selectedPages">
+                            <span
+                                @click="selectPage(page.id)">
+                                {{ page.name }}
+                            </span>
+                            <button
+                                @click="removePage(page.id)">
+                                -
+                            </button>
+                        </li>
+                    </ul> -->
+                </div>
+            </div>
+        </div>
+    </st-app>
+
+<script>
+
+    const data = {
+        site_types: [
+            'online_store',
+            'landing_page',
+            'corporate_site'
+        ],
+        design_incrementing_per_screen: [30, 10],
+        frontend_incrementing_per_screen: [50],
+        pages: [
+            { id: 0, name: 'Home', site_types: [{ name: 'online_store', is_required: true }, { name: 'landing_page', is_required: true }, { name: 'corporate_site', is_required: true }], groups: [] },
+            { id: 1, name: 'About Us', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [], is_required: false },
+            { id: 2, name: 'Portfolio - Case List', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 0, is_required: true }] },
+            { id: 3, name: 'Portfolio - Case Detail', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 0, is_required: false }] },
+            { id: 4, name: 'News - News List', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 1, is_required: true }] },
+            { id: 5, name: 'News - News Detail', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 1, is_required: false }] },
+            { id: 6, name: 'Contacts', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [] },
+            { id: 7, name: 'Reviews', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [] },
+            { id: 8, name: 'Partners', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [] },
+            { id: 9, name: 'FAQ', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [] },
+            { id: 10, name: 'Services - Section Catalog', site_types: [{ name: 'online_store', is_required: true }, { name: 'corporate_site', is_required: false }], groups: [{ id: 2, is_required: true }] },
+            { id: 11, name: 'Services - Section Detail', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 2, is_required: false }] },
+            { id: 12, name: 'Services - Service Detail', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 2, is_required: false }] },
+            { id: 13, name: 'Cart', site_types: [{ name: 'online_store', is_required: true }], groups: [] },
+            { id: 14, name: 'Checkout', site_types: [{ name: 'online_store', is_required: true }], groups: [] },
+            { id: 15, name: 'Search Results', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [] },
+            { id: 16, name: 'Promotions - Section Detail', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [] },
+            { id: 17, name: 'Saved for Later', site_types: [{ name: 'online_store', is_required: false }], groups: [] },
+            { id: 18, name: 'Wishlist', site_types: [{ name: 'online_store', is_required: false }], groups: [{ id: 3, is_required: false }] },
+            { id: 19, name: 'Product Comparison', site_types: [{ name: 'online_store', is_required: false }], groups: [] },
+            { id: 20, name: '404 Page', site_types: [{ name: 'online_store', is_required: true }, { name: 'corporate_site', is_required: true }], groups: [] },
+            { id: 21, name: 'Privacy Policy', site_types: [{ name: 'online_store', is_required: true }, { name: 'corporate_site', is_required: true }], groups: [] },
+            { id: 22, name: 'Order History', site_types: [{ name: 'online_store', is_required: false }], groups: [{ id: 3, is_required: false }] },
+            { id: 23, name: 'Login', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 3, is_required: false }] },
+            { id: 24, name: 'Registration', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 3, is_required: false }] },
+            { id: 25, name: 'Password Recovery', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 3, is_required: false }] },
+        ],
+        functional: [
+            { id: 0, name: 'City Selection Form', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [], visibility: 'site' },
+            { id: 1, name: 'City Selection Search', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [], visibility: 'site' },
+            { id: 2, name: 'Different Assortment, Prices, and Stock by Region', site_types: [{ name: 'online_store', is_required: false }], groups: [], visibility: 'site' },
+            { id: 3, name: 'Language Selection Form', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [], visibility: 'site' },
+            { id: 4, name: 'Microdata for Landing Page', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [], visibility: 'page' },
+            { id: 5, name: 'Microdata for SEO-Friendly URL Page', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [], visibility: 'page' }
+        ],
+        blocks: [
+            { id: 0, name: 'Header', site_types: [{ name: 'online_store', is_required: true }, { name: 'landing_page', is_required: true }, { name: 'corporate_site', is_required: true }], description: 'Основной ориентир пользователя в навигации', content: '"Логотип (кликабельный, ведущий на главную), Главное меню, Контактные данные (телефон, email), Кнопки CTA (например, “Заказать звонок”, “Оставить заявку”)"', design: 1, frontend: 4, backend: 4, pages: [] },
+            { id: 1, name: 'Footer', site_types: [{ name: 'online_store', is_required: true }, { name: 'landing_page', is_required: true }, { name: 'corporate_site', is_required: true }], description: 'Понимают как системный блок, который закрывает страницу', content: '"Политика конфиденциальности / условия, Повтор меню/ссылки, Соцсети"', design: 1, frontend: 3, backend: 2, pages: [] },
+            { id: 2, name: 'Hero Section', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Это то, что пользователь видит без прокрутки, первый экран', content: '"Заголовок — четкое позиционирование компании, Подзаголовок — ключевое УТП, Кнопки призыва к действию (CTA), Фоновое изображение/видео или иллюстрация"', design: 2, frontend: 3, backend: 3, pages: [] },
+            { id: 3, name: 'Services List', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Блок с ключевыми услугами или продуктами', content: '"Список основных предложений, Краткие описания, Ссылки на соответствующие разделы"', design: 2, frontend: 2, backend: 2, pages: [] },
+            { id: 4, name: 'Filtered Services List', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Блок с ключевыми услугами/товарами, отобранных по фильтру/категории', content: '"Список основных предложений, Краткие описания, Ссылки на соответствующие разделы"', design: 2, frontend: 2, backend: 2, pages: [] },
+            { id: 5, name: 'Case Studies', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Если для бизнеса это важно (B2B / услуги / решения)', content: '"Примеры реализованных проектов, Краткое описание результатов"', design: 2, frontend: 2, backend: 3, pages: [] },
+            { id: 6, name: 'News List', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Короткие анонсы актуальных публикаций', content: '"Заголовки статей, Даты, Линки на детальные статьи"', design: 2, frontend: 3, backend: 3, pages: [] },
+            { id: 7, name: 'CTA Block', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Дополнительный призыв к действию (может повторяться несколько раз)', content: '"Кнопка «Заказать бесплатную консультацию», Краткий текст-мотиватор"', design: 1, frontend: 1, backend: 1, pages: [] },
+            { id: 8, name: 'Benefits', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Суть — показать выгоды и отличия, которые важны пользователю', content: '"Иконки + короткие тексты, Факты/цифры (например, 10+ лет на рынке, 500+ проектов), Гарантии качества"', design: 2, frontend: 2, backend: 2, pages: [] },
+            { id: 9, name: 'About Us Section', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Короткая история или описание бизнеса', content: '"Пару предложений о направлении, Основные принципы/миссия, Возможно — маленькие иконки “почему мы”"', design: 1, frontend: 2, backend: 2, pages: [] },
+            { id: 10, name: 'Company History', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Блок с описанием истории становления компании', content: '"Когда и как была основана компания, Ключевые этапы развития, Достижения"', design: 1, frontend: 2, backend: 2, pages: [] },
+            { id: 11, name: 'Mission & Values', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Главная цель компании, ценности и видение', content: '"Миссия, Основные ценности, Видение будущего развития"', design: 2, frontend: 2, backend: 2, pages: [] },
+            { id: 12, name: 'Team', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Команда и руководство', content: '"Фотографии ключевых сотрудников / руководителей, Краткие описания профессионального опыта, Роли в компании"', design: 2, frontend: 2, backend: 3, pages: [] },
+            { id: 13, name: 'Testimonials', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Очень полезный блок для доверия', content: '"Отзывы с именами/компаниями, Рейтинг / логотипы клиентов"', design: 1, frontend: 4, backend: 3, pages: [] },
+            { id: 14, name: 'Contact Information', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Часто повторяют основные контакты ближе к футеру', content: '"Телефон, email, Адрес / карта, Форма обратной связи"', design: 1, frontend: 1, backend: 1, pages: [] },
+            { id: 15, name: 'Addresses List', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Информация о местонахождении офиса/офисов', content: '"Полный почтовый адрес (город, улица, дом, индекс), Адреса филиалов, Указания/ориентиры"', design: 0.2, frontend: 1, backend: 1, pages: [] },
+            { id: 16, name: 'Working Hours', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Информация о рабочем времени компании', content: '"Часы и дни работы (с указанием выходных), Время, когда можно звонить/посещать офис"', design: 0.2, frontend: 1, backend: 1, pages: [] },
+            { id: 17, name: 'Map', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Карта с указанием расположения офиса', content: '"Встроенная карта (Google/Яндекс) с маркером, Возможность масштабирования и прокладки маршрута"', design: 0.2, frontend: 2, backend: 3, pages: [] },
+            { id: 18, name: 'Contact Form', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Простая форма, чтобы отправить сообщение прямо с сайта', content: '"Поля: имя, телефон или email, текст сообщения, капча, Кнопка отправки"', design: 1, frontend: 3, backend: 2, pages: [] },
+            { id: 19, name: 'Company Details', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Официальные данные компании', content: '"Полное юридическое имя, ИНН, ОГРН, БИК, банковские реквизиты"', design: 0.2, frontend: 1, backend: 1, pages: [] },
+            { id: 20, name: 'Social Links', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Ссылки на соцсети и мессенджеры', content: '"Иконки и ссылки на соцсети (Facebook, LinkedIn, Instagram и др.), Ссылки на мессенджеры (WhatsApp, Telegram)"', design: 0.2, frontend: 1, backend: 1, pages: [] },
+            { id: 21, name: 'Statistics', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Краткая информационная выжимка', content: '"Графики, ключевые цифры, количества"', design: 1, frontend: 1, backend: 1, pages: [] },
+            { id: 22, name: 'Partners List', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Список партнёров и логотипов', content: '"Список партнёров, Рейтинг / логотипы партнёров"', design: 1, frontend: 1, backend: 3, pages: [] },
+            { id: 23, name: 'Sections List', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Блок с ключевыми разделами товаров / услуг', content: '"Список основных предложений, Краткие описания, Фоновое изображение, Ссылки на соответствующие разделы"', design: 3, frontend: 3, backend: 4, pages: [] },
+            { id: 24, name: 'Pricing Block', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Информация о цене или диапазоне цен для выбранной услуги', content: '"Таблица цен или блок «от …», Опции/варианты пакетов работ, Что входит в каждый уровень, Кнопки для покупки"', design: 3, frontend: 2, backend: 2, pages: [] },
+            { id: 25, name: 'Cart Table', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Контролы для изменения количества товара прямо в корзине', content: '"Плюс/минус или поле ввода количества, Автопересчет стоимости позиции и общей суммы"', design: 2, frontend: 5, backend: 2, pages: [] },
+            { id: 26, name: 'Promo Codes', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Возможность применить промо или купон', content: '"Поле ввода промокода, Кнопка «Применить», Отображение суммы скидки"', design: 1, frontend: 4, backend: 2, pages: [] },
+            { id: 27, name: 'Order Summary', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Отображение полной суммы к оплате', content: '"Сумма товаров, Скидки / акции, Возможные налоги или доставка"', design: 1, frontend: 2, backend: 1, pages: [] },
+            { id: 28, name: 'Customer Details Form', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Форма для ввода контактной информации клиента', content: '"Имя и фамилия, Email, Телефон, Опционально: аккаунт / регистрация / вход"', design: 2, frontend: 2, backend: 2, pages: [] },
+            { id: 29, name: 'Shipping', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Выбор способа доставки и адреса', content: '"Адрес доставки (улица, дом, город, индекс), Выбор способа доставки: курьер, почта, пункт выдачи, Сроки доставки, Стоимость доставки"', design: 2, frontend: 2, backend: 6, pages: [] },
+            { id: 30, name: 'Payment', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Блок для выбора способа оплаты заказа', content: '"Онлайн-платеж (карта, электронные деньги), Оплата при получении (наличными, картой), Частичная оплата, рассрочка (если есть)"', design: 2, frontend: 3, backend: 6, pages: [] },
+            { id: 31, name: 'Search Form', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Возможность изменить запрос прямо на странице', content: '"Поле ввода текста, Кнопка «Поиск»"', design: 0.5, frontend: 2, backend: 2, pages: [] },
+            { id: 32, name: 'Search Results', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Основной блок с найденными элементами', content: '"Карточка товара, услуги и т.п."', design: 1, frontend: 2, backend: 4, pages: [] },
+            { id: 33, name: 'Pagination', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Пагинация для перелистывания списка', content: '"Кнопки, буллеты"', design: 0.5, frontend: 1, backend: 1, pages: [] },
+            { id: 34, name: 'Filtering / Sorting / Search', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Группировка услуг по темам или видам работ, сортировка, поиск', content: '"Список категорий/тегов, Переключение сортировки, Поле для поиска, Фильтры по тематике услуг"', design: 2, frontend: 4, backend: 6, pages: [] },
+            { id: 35, name: 'FAQ', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Ответы на типичные вопросы, которые возникают у потенциального клиента', content: '"Вопросы/ответы (свернутые аккордеоны)"', design: 1, frontend: 1, backend: 2, pages: [] },
+            { id: 36, name: 'Comparison Table', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Таблица со списком товаров и их характеристиками', content: '"Карточка товара, список характеристик товара"', design: 3, frontend: 2, backend: 6, pages: [] },
+            { id: 37, name: 'Account Navigation', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Основная навигация по личному кабинету', content: '"Ссылки на ключевые разделы: «Мои заказы», «Профиль», «Адреса», «Оплата», «История», «Сообщения»; Активный раздел подсвечен"', design: 1, frontend: 2, backend: 4, pages: [] },
+            { id: 38, name: 'Profile', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Управление контактной и личной информацией', content: '"Имя, фамилия; Email, телефон; Пароль и возможность смены; Настройки уведомлений; Список сохранённых адресов"', design: 3, frontend: 4, backend: 4, pages: [] },
+            { id: 39, name: 'Orders List', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Список заказов пользователя', content: '"Список заказов (номер, дата, статус), Краткая информация по заказу (товары, сумма, способ доставки)"', design: 2, frontend: 2, backend: 4, pages: [] },
+            { id: 40, name: 'Registration Confirmation', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Форма для ввода кода подтверждения регистрации', content: '"Поле для ввода кода"', design: 1, frontend: 1, backend: 2, pages: [] },
+            { id: 41, name: 'Password Recovery Confirmation', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Форма для ввода кода восстановления пароля', content: '"Поле для ввода кода"', design: 1, frontend: 1, backend: 2, pages: [] },
+            { id: 42, name: 'City Selection', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Простая форма для выбора города', content: '"Кнопки для выбора города"', design: 0.5, frontend: 2, backend: 0.5, pages: [] },
+            { id: 43, name: 'City Search', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Возможность поиска конкретного города', content: '"Поле для ввода поискового запроса"', design: 0.5, frontend: 2, backend: 2, pages: [] },
+            { id: 44, name: 'Language Selection', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Простая форма для выбора языка на сайте', content: '"Кнопки для выбора языка"', design: 0.5, frontend: 2, backend: 0.5, pages: [] }
+        ]
+    };
+
+    
+
+    App.create({
+        app: 'site_constructor',
+        data: data,
+        setup () {
+            
+            data.site_types.forEach(type => {
+                this._selectedPages[type] = [];
+            });
+
+            this.watch('selectedType', () => {
+                this.selectedPage = null;
+            });
+        },
+        selectedType: null,
+        get availablePages() {
+            return data.pages.filter(page => 
+                page.site_types.some(siteType => siteType.name === this.selectedType && !this._selectedPages[this.selectedType].includes(page.id))
+            )
+        },
+        addPage(page_id) {
+            if (!this._selectedPages[this.selectedType].includes(page_id))
+                this._selectedPages[this.selectedType].push(page_id);
+        },
+        _selectedPages: {},
+        get selectedPages() {
+            return data.pages.filter(page =>
+                this._selectedPages[this.selectedType].includes(page.id)
+            );
+        },
+        removePage(page_id) {
+            this._selectedPages[this.selectedType] = this._selectedPages[this.selectedType].filter(id => id !== page_id);
+        },
+        selectedPage: null,
+    });
+    
+</script>
+
+</body>
+</html>

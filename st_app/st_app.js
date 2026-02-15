@@ -29,6 +29,7 @@ class App extends HTMLElement {
     #attrObserver = null;
     #watchers = [];
     #triggeredKeys = new Set();
+    #pendingFlush = false;
     #methodWrappers = new Map();
 
     constructor() {
@@ -174,9 +175,12 @@ class App extends HTMLElement {
         let effects = this.#deps.get(key);
         if (effects)
             effects.forEach(effect => this.#updateQueue.add(effect));
-        if (this.#flushing) return;
+        if (this.#flushing) {
+            this.#pendingFlush = true;
+            return;
+        }
         this.#flushing = true;
-        Promise.resolve().then(() => {
+        const runFlush = () => {
             this.#updateQueue.forEach(effect => {
                 try {
                     effect();
@@ -208,7 +212,13 @@ class App extends HTMLElement {
 
             this.#triggeredKeys.clear();
             this.#flushing = false;
-        });
+            if (this.#pendingFlush) {
+                this.#pendingFlush = false;
+                this.#flushing = true;
+                Promise.resolve().then(runFlush);
+            }
+        };
+        Promise.resolve().then(runFlush);
     }
 
     #getValueByPath(path) {
