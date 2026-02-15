@@ -521,16 +521,28 @@ class App extends HTMLElement {
                 this.#cleanupBindings(item.bindings);
             });
             renderedItems = [];
-            if (!collection || !collection.length) return;
+            let entries;
+            if (Array.isArray(collection)) {
+                entries = collection.map((value, index) => ({ value, key: undefined, index }));
+            } else if (collection !== null && typeof collection === 'object') {
+                entries = Object.entries(collection).map(([key, value], index) => ({ value, key, index }));
+            } else {
+                return;
+            }
+            if (entries.length === 0) return;
             let fragment = document.createDocumentFragment();
-            collection.forEach((item, index) => {
+            entries.forEach(({ value: item, key, index }) => {
                 let clone = template.cloneNode(true);
                 let originalItem = this[itemName];
                 let originalIndex = this.$index;
+                let originalKey = this.$key;
                 this[itemName] = item;
                 this.$index = index;
+                if (key !== undefined) this.$key = key;
                 let previousLoopCtx = this.#loopContext;
-                this.#loopContext = { ...previousLoopCtx, [itemName]: item, $index: index };
+                let loopCtx = { ...previousLoopCtx, [itemName]: item, $index: index };
+                if (key !== undefined) loopCtx.$key = key;
+                this.#loopContext = loopCtx;
                 let bindingsLengthBefore = this.#bindings.length;
                 this.#processNode(clone);
                 let itemBindings = this.#bindings.slice(bindingsLengthBefore);
@@ -543,6 +555,10 @@ class App extends HTMLElement {
                     this.$index = originalIndex;
                 else
                     delete this.$index;
+                if (originalKey !== undefined)
+                    this.$key = originalKey;
+                else
+                    delete this.$key;
                 fragment.appendChild(clone);
                 renderedItems.push({ node: clone, bindings: itemBindings });
             });

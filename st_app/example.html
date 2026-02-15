@@ -128,7 +128,7 @@
             <li><strong>Двусторонняя привязка:</strong> атрибут <code>#model</code> для форм</li>
             <li><strong>События:</strong> обработчики через <code>@event="handler()"</code></li>
             <li><strong>Условный рендеринг:</strong> <code>#if</code>, <code>#else-if</code>, <code>#else</code></li>
-            <li><strong>Циклы:</strong> <code>#for="item in items"</code> с доступом к <code>$index</code></li>
+            <li><strong>Циклы:</strong> <code>#for="item in items"</code> — для массивов доступны элемент и <code>$index</code>; для объектов — значение и <code>$key</code></li>
             <li><strong>Видимость:</strong> <code>#show="condition"</code> для скрытия элементов</li>
             <li><strong>Вычисляемые свойства:</strong> геттеры с автоматическим пересчётом</li>
             <li><strong>Атрибуты с <code>:</code>:</strong> передача данных в дочерние компоненты; <code>:attr</code> без значения — значение из прототипа (в т.ч. JSON-объект)</li>
@@ -155,7 +155,7 @@
     <!-- Пример 3: Списки -->
     <div class="example">
         <h2>3. Списки и циклы (#for)</h2>
-        <p>Работа с массивами через директиву <code>#for</code> и доступ к индексу <code>$index</code>.</p>
+        <p>Директива <code>#for</code>: для массивов доступны элемент и <code>$index</code>; для объектов — значение и <code>$key</code>.</p>
         <st-app ::app="list"></st-app>
     </div>
 
@@ -316,6 +316,7 @@
             items: ['JavaScript', 'Vue', 'React', 'Angular'],
             newItem: '',
             showList: true,
+            settings: { theme: 'Тёмная', lang: 'Русский', notifications: 'Вкл' },
             
             addItem() {
                 if (this.newItem.trim()) {
@@ -360,6 +361,11 @@
                         <p style="margin-top: 10px; color: #666;">
                             Всего элементов: <strong>{{ items.length }}</strong>
                         </p>
+                        
+                        <p style="margin-top: 15px; color: #333;"><strong>Перебор объекта (<code>#for</code> + <code>$key</code>):</strong></p>
+                        <ul style="margin-top: 5px;">
+                            <li #for="val in settings">{{ $key }}: {{ val }}</li>
+                        </ul>
                     </div>
                 </div>
             `
