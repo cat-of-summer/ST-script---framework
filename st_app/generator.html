@@ -6,12 +6,16 @@
     <title>Конструктор</title>
     <script src="st_app.js"></script>
     <style>
-        st-app {
+        st-app[\:\:app="site_constructor"] {
             .active {
                 background: #42b883;
             }
             .required {
                 background: #f39c12;
+            }
+            .suggestion {
+                background: #ecf0f1;
+                border: 1px solid #bdc3c7;
             }
             .site_types {
                 cursor: pointer;
@@ -39,7 +43,8 @@
                         gap: 20px;
                         li {
                             display: flex;
-                            gap: 10px
+                            gap: 5px 20px;
+                            cursor: pointer;
                         }
                     }
                     .selectedPage {
@@ -47,19 +52,24 @@
                         grid-template-columns: repeat(10, 1fr);
 
                         .page_name {
+                            padding: 0 40px;
                             grid-column: span 10;
                         }
 
                         .availableBlocks li, .selectedBlocks li {
-                            position: relative;
+                            display: block;
+                            cursor: pointer;
 
                             .float {
                                 background-color: white;
                                 padding: 10px;
-                                position: absolute;
-                                top: 100%;
-                                left: 0;
-                                visibility: hidden;
+                                display: none;
+                                z-index: 10;
+                                min-width: 33vw;
+                                flex-direction: column;
+                            }
+                            .float.visible {
+                                display: flex;
                             }
                         }
 
@@ -90,12 +100,11 @@
         </div>
         <div class="pages">
             <ul class="availablePages">
+                <span #show="availablePages?.length">Доступные страницы</span>
                 <li 
                     #for="page in availablePages"
                     class="{{isPageRequired(page)}}">
-                    <span>
-                        {{ page.name }}
-                    </span>
+                    <span>{{ page.name }}</span>
                     <button
                         @click="addPage(page.id)">
                         +
@@ -104,6 +113,7 @@
             </ul>
             <div class="right">
                 <ul class="selectedPages">
+                    <span #show="selectedPages?.length">Выбранные страницы</span>
                     <li
                         #for="page in selectedPages"
                         >
@@ -120,35 +130,38 @@
                 <div
                     #show="selectedPage"
                     class="selectedPage">
-                    <span class="page_name">{{ selectedPage?.name }}</span>
+                    <span class="page_name">Выбранная страница: {{ selectedPage?.name }}</span>
                     <ul class="availableBlocks">
+                        <span #show="availableBlocks?.length">Доступные блоки</span>
                         <li
                             #for="block in availableBlocks"
                             class="{{isBlockRequired(block)}}">
                             <span
-                                @click="">
+                                @click="expandedBlockId = expandedBlockId === block.id ? null : block.id">
                                 {{ block.name }}
                             </span>
                             <button
                                 @click="addBlock(block.id)">
                                 +
                             </button>
-                            <div class="float">
-                                <span>{{ block.description }}</span>
-                                <span>{{ block.content }}</span>
+                            <div class="float {{ expandedBlockId === block.id ? 'visible' : '' }}">
+                                <span>Описание: {{ block.description }}</span>
+                                <span>Содержание: {{ block.content }}</span>
                             </div>
                         </li>
                     </ul>
                     <ul class="selectedBlocks">
+                        <span #show="selectedBlocks?.length">Выбранные блоки</span>
                         <li #for="block in selectedBlocks">
-                            <span>{{ block.name }}</span>
+                            <span
+                                @click="expandedBlockId = expandedBlockId === block.id ? null : block.id">{{ block.name }}</span>
                             <button
                                 @click="removeBlock(block.id)">
                                 -
                             </button>
-                            <div class="float">
-                                <span>{{ block.description }}</span>
-                                <span>{{ block.content }}</span>
+                            <div class="float {{ expandedBlockId === block.id ? 'visible' : '' }}">
+                                <span>Описание: {{ block.description }}</span>
+                                <span>Содержание: {{ block.content }}</span>
                             </div>
                         </li>
                     </ul>
@@ -208,9 +221,9 @@
             { id: 20, name: '404 Page', site_types: [{ name: 'online_store', is_required: true }, { name: 'corporate_site', is_required: true }], groups: [] },
             { id: 21, name: 'Privacy Policy', site_types: [{ name: 'online_store', is_required: true }, { name: 'corporate_site', is_required: true }], groups: [] },
             { id: 22, name: 'Order History', site_types: [{ name: 'online_store', is_required: false }], groups: [{ id: 3, is_required: false }] },
-            { id: 23, name: 'Login', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 3, is_required: false }] },
-            { id: 24, name: 'Registration', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 3, is_required: false }] },
-            { id: 25, name: 'Password Recovery', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 3, is_required: false }] },
+            { id: 23, name: 'Login', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 3, is_required: true }] },
+            { id: 24, name: 'Registration', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 3, is_required: true }] },
+            { id: 25, name: 'Password Recovery', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [{ id: 3, is_required: true }] },
         ],
         functional: [
             { id: 0, name: 'City Selection Form', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [], visibility: 'site' },
@@ -258,14 +271,11 @@
             { id: 34, name: 'Filtering / Sorting / Search', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Группировка услуг по темам или видам работ, сортировка, поиск', content: '"Список категорий/тегов, Переключение сортировки, Поле для поиска, Фильтры по тематике услуг"', design: 2, frontend: 4, backend: 6, pages: [] },
             { id: 35, name: 'FAQ', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Ответы на типичные вопросы, которые возникают у потенциального клиента', content: '"Вопросы/ответы (свернутые аккордеоны)"', design: 1, frontend: 1, backend: 2, pages: [] },
             { id: 36, name: 'Comparison Table', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Таблица со списком товаров и их характеристиками', content: '"Карточка товара, список характеристик товара"', design: 3, frontend: 2, backend: 6, pages: [] },
-            { id: 37, name: 'Account Navigation', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Основная навигация по личному кабинету', content: '"Ссылки на ключевые разделы: «Мои заказы», «Профиль», «Адреса», «Оплата», «История», «Сообщения»; Активный раздел подсвечен"', design: 1, frontend: 2, backend: 4, pages: [] },
-            { id: 38, name: 'Profile', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Управление контактной и личной информацией', content: '"Имя, фамилия; Email, телефон; Пароль и возможность смены; Настройки уведомлений; Список сохранённых адресов"', design: 3, frontend: 4, backend: 4, pages: [] },
+            { id: 37, name: 'Account Navigation', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Основная навигация по личному кабинету', content: '"Ссылки на ключевые разделы: «Мои заказы», «Профиль», «Адреса», «Оплата», «История», «Сообщения»; Активный раздел подсвечен"', design: 1, frontend: 2, backend: 4, pages: [{id: 23, is_required: true}, {id: 24, is_required: true}, {id: 25, is_required: true}] },
+            { id: 38, name: 'Profile', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Управление контактной и личной информацией', content: '"Имя, фамилия; Email, телефон; Пароль и возможность смены; Настройки уведомлений; Список сохранённых адресов"', design: 3, frontend: 4, backend: 4, pages: [{id: 23, is_required: true}, {id: 24, is_required: true}, {id: 25, is_required: true}] },
             { id: 39, name: 'Orders List', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Список заказов пользователя', content: '"Список заказов (номер, дата, статус), Краткая информация по заказу (товары, сумма, способ доставки)"', design: 2, frontend: 2, backend: 4, pages: [] },
-            { id: 40, name: 'Registration Confirmation', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Форма для ввода кода подтверждения регистрации', content: '"Поле для ввода кода"', design: 1, frontend: 1, backend: 2, pages: [] },
-            { id: 41, name: 'Password Recovery Confirmation', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Форма для ввода кода восстановления пароля', content: '"Поле для ввода кода"', design: 1, frontend: 1, backend: 2, pages: [] },
-            { id: 42, name: 'City Selection', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Простая форма для выбора города', content: '"Кнопки для выбора города"', design: 0.5, frontend: 2, backend: 0.5, pages: [] },
-            { id: 43, name: 'City Search', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Возможность поиска конкретного города', content: '"Поле для ввода поискового запроса"', design: 0.5, frontend: 2, backend: 2, pages: [] },
-            { id: 44, name: 'Language Selection', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Простая форма для выбора языка на сайте', content: '"Кнопки для выбора языка"', design: 0.5, frontend: 2, backend: 0.5, pages: [] }
+            { id: 40, name: 'Registration Confirmation', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Форма для ввода кода подтверждения регистрации', content: '"Поле для ввода кода"', design: 1, frontend: 1, backend: 2, pages: [{id: 23, is_required: true}, {id: 24, is_required: true}, {id: 25, is_required: true}] },
+            { id: 41, name: 'Password Recovery Confirmation', site_types: [{ name: 'online_store', is_required: false }, { name: 'landing_page', is_required: false }, { name: 'corporate_site', is_required: false }], description: 'Форма для ввода кода восстановления пароля', content: '"Поле для ввода кода"', design: 1, frontend: 1, backend: 2, pages: [{id: 23, is_required: true}, {id: 24, is_required: true}, {id: 25, is_required: true}] },
         ]
     };
 
@@ -316,6 +326,7 @@
                 this.selectedPage = null;
         },
         selectedPage: null,
+        expandedBlockId: null,
         _selectedBlocks: {},
         get selectedBlocks() {
             return data.blocks.filter(block =>
@@ -325,7 +336,7 @@
         get availableBlocks() {
             return data.blocks.filter(block =>
                 block.site_types.some(siteType => siteType.name === this.selectedType) &&
-                (block.pages.length === 0 || block.pages.some(page => page.id === this.selectedPage.id)) &&
+                (block.pages.length === 0 || block.pages.some(page => page.id === this.selectedPage?.id)) &&
                 !this._selectedBlocks[this.selectedType]?.[this.selectedPage?.id]?.includes(block.id)
             );
         },
@@ -337,9 +348,18 @@
             this._selectedBlocks[this.selectedType][this.selectedPage.id] = this._selectedBlocks[this.selectedType][this.selectedPage.id].filter(id => id !== block_id);
         },
         isPageRequired(page) {
-            return page.site_types.some(siteType => siteType.name === this.selectedType && siteType.is_required)
-                ? 'required'
-                : '';
+            if (page.site_types.some(siteType => siteType.name === this.selectedType && siteType.is_required))
+                return 'required';
+            if (page.groups && page.groups.length) {
+                const selectedIds = new Set(this.selectedPages.map(p => p.id));
+                for (const group of page.groups) {
+                    if (!group.is_required) continue;
+                    const pagesInGroup = this.data.pages.filter(p => p.groups && p.groups.some(g => g.id === group.id));
+                    if (pagesInGroup.some(p => selectedIds.has(p.id)))
+                        return 'required';
+                }
+            }
+            return 'suggestion';
         },
         isBlockRequired(block) {
             return block.site_types.some(siteType => siteType.name === this.selectedType && siteType.is_required) || block.pages.some(page => page.id === this.selectedPage?.id && page.is_required)
