@@ -854,6 +854,7 @@ class App extends HTMLElement {
                 setMyTimeout();
             })
         ]).then(() => {
+            this.dispatch('setup');
             for (let name of this.attrs.keys()) {
                 if (!name.startsWith(':') || name === '::app') continue;
                 this.#applySingleAttributeOption(name);
@@ -879,7 +880,6 @@ class App extends HTMLElement {
                     this.dispatch('rendered');
                 }
             }
-            this.dispatch('setup');
             if (this.#booted === true && !this.#attrObserver) {
                 this.#attrObserver = new MutationObserver(mutations => {
                     for (let m of mutations) {
