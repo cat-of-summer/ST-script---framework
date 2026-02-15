@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Конструктор</title>
+    <script src="st_app.js"></script>
+</head>
+<body>
+
+    <style>
+        section {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+
+            div {
+                display: flex;
+            }
+        }
+    </style>
+
+    <st-app :data='{"name":"John","age":30,"address":{"city":"New York"}}' :direction="column" :columns="5">
+        <section>
+            <div style="flex-direction: {{ direction }}; grid-column: span {{ columns }};">
+                <input type="text" #model="data.name">
+                <input type="text" #model="data.age">
+                <input type="text" #model="data.address.city">
+                <select #model="direction">
+                    <option value="column">Column</option>
+                    <option value="row">Row</option>
+                </select>
+                <input #show="direction === 'column'" type="range" min="1" max="5" #model="columns"/>
+            </div>
+        </section>
+    </st-app>
+
+</body>
+</html>

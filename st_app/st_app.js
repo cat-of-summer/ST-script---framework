@@ -450,16 +450,16 @@ class App extends HTMLElement {
         let chain = [{ expr, element, bindings: [], processed: false }];
         let nextSibling = element.nextElementSibling;
         while (nextSibling) {
-            if (nextSibling.hasAttribute('else-if')) {
-                let elseIfExpr = nextSibling.getAttribute('else-if');
+            if (nextSibling.hasAttribute('#else-if')) {
+                let elseIfExpr = nextSibling.getAttribute('#else-if');
                 chain.push({ expr: elseIfExpr, element: nextSibling, bindings: [], processed: false });
-                nextSibling.removeAttribute('else-if');
+                nextSibling.removeAttribute('#else-if');
                 let next = nextSibling.nextElementSibling;
                 nextSibling.remove();
                 nextSibling = next;
-            } else if (nextSibling.hasAttribute('else')) {
+            } else if (nextSibling.hasAttribute('#else')) {
                 chain.push({ expr: 'true', element: nextSibling, bindings: [], processed: false });
-                nextSibling.removeAttribute('else');
+                nextSibling.removeAttribute('#else');
                 nextSibling.remove();
                 break;
             } else
@@ -590,33 +590,33 @@ class App extends HTMLElement {
     #processDirectives(element) {
         let attrs = Array.from(element.attributes);
         for (let attr of attrs) {
-            if (attr.name.startsWith('@')) {
-                this.#bindEvent(element, attr);
-                element.removeAttribute(attr.name);
-            }
-            else if (attr.name === 'if') {
+            if (attr.name === '#if') {
                 this.#bindConditional(element, attr);
                 element.removeAttribute(attr.name);
                 return true;
             }
-            else if (attr.name === 'for') {
+            else if (attr.name === '#for') {
                 this.#bindLoop(element, attr);
                 element.removeAttribute(attr.name);
                 return true;
             }
-            else if (attr.name === 'show') {
+            else if (attr.name === '#show') {
                 this.#bindShow(element, attr);
                 element.removeAttribute(attr.name);
             }
-            else if (attr.name === 'model') {
+            else if (attr.name === '#model') {
                 this.#bindModel(element, attr);
                 element.removeAttribute(attr.name);
             }
-            else if (attr.name === 'once')
+            else if (attr.name === '#once')
                 element.removeAttribute(attr.name);
-            else if (attr.name === 'pre') {
+            else if (attr.name === '#pre') {
                 element.removeAttribute(attr.name);
                 return true;
+            }
+            else if (attr.name.startsWith('@')) {
+                this.#bindEvent(element, attr);
+                element.removeAttribute(attr.name);
             }
             else if (/\{\{.+?\}\}/.test(attr.value))
                 this.#bindAttribute(element, attr);
