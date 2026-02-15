@@ -14,8 +14,6 @@ class App extends HTMLElement {
             if (instance.#booted !== true)
                 instance.#boot();
         });
-
-        return this;
     }
 
     #booted = false;
