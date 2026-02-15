@@ -44,7 +44,9 @@ class App extends HTMLElement {
             else if (binding.type === 'model' && binding.element && binding.handler) {
                 let eventName = binding.element.tagName === 'SELECT' ? 'change' : 'input';
                 binding.element.removeEventListener(eventName, binding.handler);
-            }
+            } else if (binding.type === 'attrSync' && binding.unwatch)
+                binding.unwatch();
+                
             if (binding.effect) {
                 this.#deps.forEach((effects, key) => {
                     effects.delete(binding.effect);
@@ -720,25 +722,46 @@ class App extends HTMLElement {
         })));
     }
 
+    #serializeForAttr(value) {
+        if (value === null || value === undefined) return '';
+        if (value === true) return 'true';
+        if (value === false) return 'false';
+        if (typeof value === 'number') return String(value);
+        if (typeof value === 'object') return JSON.stringify(value);
+        return String(value);
+    }
+
     #applySingleAttributeOption(name) {
         if (!name.startsWith(':') || name === '::app') return;
         let propName = name.replace(/^:+/,'');
         let raw = this.getAttribute(name);
-        if (raw === null) return;
         let descriptor = Object.getOwnPropertyDescriptor(this, propName);
+        let val = raw;
+        if (!raw) {
+            if (descriptor && (descriptor.get || descriptor.value !== undefined)) {
+                let existingVal = this[propName];
+                let serialized = this.#serializeForAttr(existingVal);
+                if (this.getAttribute(name) !== serialized)
+                    this.setAttribute(name, serialized);
+                val = existingVal;
+                descriptor = null;
+            }
+        }
         if (descriptor && descriptor.set === undefined && descriptor.writable === false) return;
         if (descriptor && descriptor.get !== undefined && descriptor.set === undefined) return;
-        let val = raw;
-        if (raw === 'true') val = true;
-        else if (raw === 'false') val = false;
-        else if (/^-?\d+(\.\d+)?$/.test(raw)) val = Number(raw);
-        else { try { val = JSON.parse(raw); } catch { val = raw; } }
+        if (raw) {
+            if (raw === 'true') val = true;
+            else if (raw === 'false') val = false;
+            else if (/^-?\d+(\.\d+)?$/.test(raw)) val = Number(raw);
+            else { try { val = JSON.parse(raw); } catch { val = raw; } }
+        }
         if (!descriptor || !descriptor.set) {
             let internalValue = val;
             if (typeof val === 'object' && val !== null)
                 internalValue = this.#createReactiveProxy(val, [propName]);
             else if (typeof val === 'function')
                 internalValue = this.#createReactiveFunction(val, propName);
+            let attrName = name;
             Object.defineProperty(this, propName, {
                 get() {
                     this.#track(propName);
@@ -751,11 +774,23 @@ class App extends HTMLElement {
                         else
                             internalValue = newValue;
                         this.#trigger(propName);
+                        let serialized = this.#serializeForAttr(newValue);
+                        if (this.getAttribute(attrName) !== serialized)
+                            this.setAttribute(attrName, serialized);
                     }
                 },
                 enumerable: true,
                 configurable: true
             });
+            if (typeof val === 'object' && val !== null) {
+                let unwatch = this.watch(propName, () => {
+                    let v = this[propName];
+                    let s = this.#serializeForAttr(v);
+                    if (this.getAttribute(name) !== s)
+                        this.setAttribute(name, s);
+                }, { deep: true });
+                this.#bindings.push({ type: 'attrSync', unwatch });
+            }
         } else
             this[propName] = val;
     }

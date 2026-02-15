@@ -131,7 +131,7 @@
             <li><strong>Циклы:</strong> <code>for="item in items"</code> с доступом к <code>$index</code></li>
             <li><strong>Видимость:</strong> <code>show="condition"</code> для скрытия элементов</li>
             <li><strong>Вычисляемые свойства:</strong> геттеры с автоматическим пересчётом</li>
-            <li><strong>Атрибуты с <code>:</code>:</strong> передача данных в дочерние компоненты</li>
+            <li><strong>Атрибуты с <code>:</code>:</strong> передача данных в дочерние компоненты; <code>:attr</code> без значения — значение из прототипа (в т.ч. JSON-объект)</li>
             <li><strong>Вложенные компоненты:</strong> <code>&lt;st-app&gt;</code> внутри <code>&lt;st-app&gt;</code></li>
             <li><strong>innerHTML как шаблон:</strong> переопределение template через содержимое элемента</li>
             <li><strong>watch:</strong> <code>this.watch(source, callback, options?)</code>, в колбэке <code>unwatch()</code> — третий аргумент</li>
@@ -196,6 +196,17 @@
             преобразуются в свойства <code>initialCount</code>, <code>step</code> и <code>label</code> компонента.
         </div>
         <st-app ::app="withProps" :initial-count="100" :step="5" :label="'Счётчик с настройками'"></st-app>
+    </div>
+
+    <!-- Пример 7a: Обратная совместимость — свойство JSON-объект из прототипа -->
+    <div class="example">
+        <h2>7a. Обратная совместимость: свойство — JSON-объект из прототипа</h2>
+        <p>Если атрибут <code>:attr</code> указан без значения, значение берётся из конфига <code>App.create()</code>. Для объекта атрибут синхронизируется с JSON-строкой.</p>
+        <div class="note">
+            <strong>Примечание:</strong> Используется <code>&lt;st-app ::app="jsonProps" :options&gt;</code> — без значения у <code>:options</code>. 
+            Свойство <code>options</code> задано в прототипе объектом <code>{ theme, limit }</code> и подтягивается в компонент; при изменении свойства атрибут обновляется.
+        </div>
+        <st-app ::app="jsonProps" :options></st-app>
     </div>
 
     <!-- Пример 8: innerHTML как шаблон -->
@@ -651,6 +662,27 @@
                     <h2 style="font-size: 36px; margin: 15px 0;">{{ count }}</h2>
                     <button @click="increment()">➕ +{{ step }}</button>
                     <button @click="decrement()">➖ -{{ step }}</button>
+                </div>
+            `
+        });
+
+        // Пример 7a: Обратная совместимость — свойство JSON-объект (атрибут :options без значения)
+        App.create({
+            app: 'jsonProps',
+            options: { theme: 'dark', limit: 10 },
+            template: `
+                <div style="padding: 20px; background: #f5f0ff; border-radius: 8px;">
+                    <h3>Свойство <code>options</code> из прототипа (JSON-объект)</h3>
+                    <p>Тема: <strong>{{ options.theme }}</strong>, Лимит: <strong>{{ options.limit }}</strong></p>
+                    <div style="margin: 10px 0;">
+                        <div>{{ options.theme }}</div>
+                        <label>Тема: </label>
+                        <input type="text" model="options.theme" placeholder="theme" style="width: 120px;">
+                        <label style="margin-left: 15px;">Лимит: </label>
+                        <input type="number" model="options.limit" min="1" max="100" style="width: 80px;">
+                    </div>
+                    <p style="color: #666; font-size: 12px; margin-top: 10px;">Атрибут <code>:options</code> синхронизирован с объектом (двусторонняя связь).</p>
+                    <pre style="background: #fff; padding: 10px; border-radius: 4px; overflow: auto; font-size: 12px;">{{ JSON.stringify(options, null, 2) }}</pre>
                 </div>
             `
         });
