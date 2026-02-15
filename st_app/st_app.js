@@ -517,8 +517,8 @@ class App extends HTMLElement {
         }
         let itemName = match[1];
         let collectionExpr = match[2];
-        let placeholder = document.createComment(`for: ${loopExpr}`);
-        element.parentNode.insertBefore(placeholder, element);
+        let parent = element.parentNode;
+        let nextSibling = element.nextSibling;
         element.removeAttribute(attr.name);
         let template = element.cloneNode(true);
         element.remove();
@@ -572,9 +572,9 @@ class App extends HTMLElement {
                 fragment.appendChild(clone);
                 renderedItems.push({ node: clone, bindings: itemBindings });
             });
-            placeholder.parentNode.insertBefore(fragment, placeholder.nextSibling);
+            parent.insertBefore(fragment, nextSibling);
         });
-        this.#bindings.push({ type: 'loop', placeholder, template, effect });
+        this.#bindings.push({ type: 'loop', parent, nextSibling, template, effect });
     }
 
     #bindAttribute(element, attr) {

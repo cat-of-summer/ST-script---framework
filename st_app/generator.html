@@ -7,8 +7,71 @@
     <script src="st_app.js"></script>
     <style>
         st-app {
+            .active {
+                background: #42b883;
+            }
+            .required {
+                background: #f39c12;
+            }
             .site_types {
-                cursor: pointer
+                cursor: pointer;
+                ul {
+                    display: flex;
+                    gap: 30px;
+                    li {
+                        display: block;
+                        padding: 10px 20px;
+                    }
+                }
+            }
+            .pages {
+                display: grid;
+                grid-template-columns: repeat(10, 1fr);
+                .availablePages {
+                    grid-column: span 3;
+                }
+                .right {
+                    grid-column: span 7;
+
+                    .selectedPages {
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 20px;
+                        li {
+                            display: flex;
+                            gap: 10px
+                        }
+                    }
+                    .selectedPage {
+                        display: grid;
+                        grid-template-columns: repeat(10, 1fr);
+
+                        .page_name {
+                            grid-column: span 10;
+                        }
+
+                        .availableBlocks li, .selectedBlocks li {
+                            position: relative;
+
+                            .float {
+                                background-color: white;
+                                padding: 10px;
+                                position: absolute;
+                                top: 100%;
+                                left: 0;
+                                visibility: hidden;
+                            }
+                        }
+
+                        .availableBlocks {
+                            grid-column: span 4;
+                        }
+
+                        .selectedBlocks {
+                            grid-column: span 6;
+                        }
+                    }
+                }
             }
         }
     </style>
@@ -27,7 +90,9 @@
         </div>
         <div class="pages">
             <ul class="availablePages">
-                <li #for="page in availablePages">
+                <li 
+                    #for="page in availablePages"
+                    class="{{isPageRequired(page)}}">
                     <span>
                         {{ page.name }}
                     </span>
@@ -37,9 +102,11 @@
                     </button>
                 </li>
             </ul>
-            <div>
+            <div class="right">
                 <ul class="selectedPages">
-                    <li #for="page in selectedPages">
+                    <li
+                        #for="page in selectedPages"
+                        >
                         <span
                             @click="selectedPage = page">
                             {{ page.name }}
@@ -50,21 +117,59 @@
                         </button>
                     </li>
                 </ul>
-                <div class="selectedPage">
-                    <span>{{ selectedPage?.name }}</span>
-                    <!-- <ul>
-                        <li #for="page in selectedPages">
+                <div
+                    #show="selectedPage"
+                    class="selectedPage">
+                    <span class="page_name">{{ selectedPage?.name }}</span>
+                    <ul class="availableBlocks">
+                        <li
+                            #for="block in availableBlocks"
+                            class="{{isBlockRequired(block)}}">
                             <span
-                                @click="selectPage(page.id)">
-                                {{ page.name }}
+                                @click="">
+                                {{ block.name }}
                             </span>
                             <button
-                                @click="removePage(page.id)">
+                                @click="addBlock(block.id)">
+                                +
+                            </button>
+                            <div class="float">
+                                <span>{{ block.description }}</span>
+                                <span>{{ block.content }}</span>
+                            </div>
+                        </li>
+                    </ul>
+                    <ul class="selectedBlocks">
+                        <li #for="block in selectedBlocks">
+                            <span>{{ block.name }}</span>
+                            <button
+                                @click="removeBlock(block.id)">
                                 -
                             </button>
+                            <div class="float">
+                                <span>{{ block.description }}</span>
+                                <span>{{ block.content }}</span>
+                            </div>
                         </li>
-                    </ul> -->
+                    </ul>
                 </div>
+            </div>
+        </div>
+        <div class="result">
+            <span>Site type: {{ selectedType }}</span>
+            <span>Pages count: {{ selectedPages.length }}</span>
+            <span>Blocks count: {{ selectedBlocks.length }}</span>
+            <div>
+                <label>
+                    <span>Screen count</span>
+                    <input type="number" min="1" max="5" #model="screen_count">
+                </label>
+            </div>
+            <div class="calcutlated">
+                <span>Design hours: {{ designHours }}</span>
+                <span>Frontend hours: {{ frontendHours }}</span>
+                <span>Backend hours: {{ backendHours }}</span>
+                <span class="total">Total hours: {{ +designHours + +frontendHours + +backendHours }}</span>
             </div>
         </div>
     </st-app>
@@ -77,8 +182,8 @@
             'landing_page',
             'corporate_site'
         ],
-        design_incrementing_per_screen: [30, 10],
-        frontend_incrementing_per_screen: [50],
+        design_incrementing_per_screen: [1.3, 0.1, 0.1, 0.1, 0.1],
+        frontend_incrementing_per_screen: [1.5, 0.3, 0.3, 0.3, 0.3],
         pages: [
             { id: 0, name: 'Home', site_types: [{ name: 'online_store', is_required: true }, { name: 'landing_page', is_required: true }, { name: 'corporate_site', is_required: true }], groups: [] },
             { id: 1, name: 'About Us', site_types: [{ name: 'online_store', is_required: false }, { name: 'corporate_site', is_required: false }], groups: [], is_required: false },
@@ -169,9 +274,18 @@
     App.create({
         app: 'site_constructor',
         data: data,
+        screen_count: 1,
         setup () {
             data.site_types.forEach(type => {
                 this._selectedPages[type] = [];
+                
+                this._selectedBlocks[type] = {};
+
+                data.pages.filter(page =>
+                    page.site_types.some(siteType => siteType.name === type)
+                ).forEach(page => {
+                    this._selectedBlocks[type][page.id] = [];
+                });
             });
 
             this.watch('selectedType', () => {
@@ -191,13 +305,56 @@
         _selectedPages: {},
         get selectedPages() {
             return data.pages.filter(page =>
-                this._selectedPages[this.selectedType].includes(page.id)
+                this._selectedPages[this.selectedType]?.includes(page.id)
             );
         },
         removePage(page_id) {
             this._selectedPages[this.selectedType] = this._selectedPages[this.selectedType].filter(id => id !== page_id);
+            this._selectedBlocks[this.selectedType][page_id] = [];
+
+            if (page_id == this.selectedPage.id)
+                this.selectedPage = null;
         },
         selectedPage: null,
+        _selectedBlocks: {},
+        get selectedBlocks() {
+            return data.blocks.filter(block =>
+                this._selectedBlocks[this.selectedType]?.[this.selectedPage?.id]?.includes(block.id)
+            );
+        },
+        get availableBlocks() {
+            return data.blocks.filter(block =>
+                block.site_types.some(siteType => siteType.name === this.selectedType) &&
+                (block.pages.length === 0 || block.pages.some(page => page.id === this.selectedPage.id)) &&
+                !this._selectedBlocks[this.selectedType]?.[this.selectedPage?.id]?.includes(block.id)
+            );
+        },
+        addBlock(block_id) {
+            if (!this._selectedBlocks[this.selectedType][this.selectedPage.id].includes(block_id))
+                this._selectedBlocks[this.selectedType][this.selectedPage.id].push(block_id);
+        },
+        removeBlock(block_id) {
+            this._selectedBlocks[this.selectedType][this.selectedPage.id] = this._selectedBlocks[this.selectedType][this.selectedPage.id].filter(id => id !== block_id);
+        },
+        isPageRequired(page) {
+            return page.site_types.some(siteType => siteType.name === this.selectedType && siteType.is_required)
+                ? 'required'
+                : '';
+        },
+        isBlockRequired(block) {
+            return block.site_types.some(siteType => siteType.name === this.selectedType && siteType.is_required) || block.pages.some(page => page.id === this.selectedPage?.id && page.is_required)
+                ? 'required'
+                : '';
+        },
+        get designHours() {
+            return (this.selectedBlocks.reduce((sum, block) => sum + block.design, 0) * Math.max(1, this.data.design_incrementing_per_screen.slice(0, this.screen_count - 1).reduce((sum, num) => sum + num, 0))).toFixed(1);
+        },
+        get frontendHours() {
+            return (this.selectedBlocks.reduce((sum, block) => sum + block.frontend, 0) * Math.max(1, this.data.frontend_incrementing_per_screen.slice(0, this.screen_count - 1).reduce((sum, num) => sum + num, 0))).toFixed(1);
+        },
+        get backendHours() {
+            return (this.selectedBlocks.reduce((sum, block) => sum + block.backend, 0)).toFixed(1)
+        },
     });
     
 </script>
