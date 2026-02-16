@@ -6,8 +6,6 @@ class App extends HTMLElement {
     static #instances = new Set();
 
     static create(options) {
-        console.log(this);
-        console.log(App);
         let { app, setup = () => {}, template = ``, events = {} } = options;
         if (App.#apps.has(app))
             throw new Error(`Application "${app}" already exists!`);
