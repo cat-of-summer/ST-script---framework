@@ -82,6 +82,7 @@ jobs:
           #   *.ext         — все файлы с расширением    (пример: *.png)
           #   dirname/      — папка целиком              (пример: node_modules/)
           #   filename      — конкретный файл по имени   (пример: package-lock.json)
+          #   !pattern      — отмена предыдущего правила (пример: !examples/)
           #   # комментарий — строки начинающиеся с # игнорируются
           #
           # Файл создаётся автоматически при первом запуске и больше не перезаписывается.
@@ -91,7 +92,7 @@ jobs:
           #
           # ═══════════════════════════════════════════════
           # Blacklist for docs generation
-          # Syntax: *.ext, dirname/, filename. Comments: #
+          # Syntax: *.ext, dirname/, filename, !negation. Comments: #
           # ═══════════════════════════════════════════════
 
           # Images
@@ -233,43 +234,70 @@ jobs:
             echo "Created default $DOCIGNORE"
           fi
 
-          build_exclude_pattern() {
-            local patterns=()
+          RULES_PATTERN=()
+          RULES_NEGATE=()
+
+          parse_rules() {
+            RULES_PATTERN=()
+            RULES_NEGATE=()
             while IFS= read -r line || [[ -n "$line" ]]; do
               line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
               [[ -z "$line" || "$line" == \#* ]] && continue
 
+              local negate=false
+              if [[ "$line" == \!* ]]; then
+                negate=true
+                line="${line#!}"
+              fi
+
+              local pattern
               if [[ "$line" == */ ]]; then
                 local dir="${line%/}"
                 local esc
                 esc="$(printf '%s' "$dir" | sed 's/[.[\*^$()+?{|\\]/\\&/g')"
-                patterns+=("(^|/)${esc}(/|$)")
+                pattern="(^|/)${esc}(/|$)"
               elif [[ "$line" == \*.* ]]; then
                 local ext="${line#\*.}"
                 local esc
                 esc="$(printf '%s' "$ext" | sed 's/[.[\*^$()+?{|\\]/\\&/g')"
-                patterns+=("\\.${esc}$")
+                pattern="\\.${esc}$"
               else
                 local esc
                 esc="$(printf '%s' "$line" | sed 's/[.[\*^$()+?{|\\]/\\&/g')"
-                patterns+=("(^|/)${esc}$")
+                pattern="(^|/)${esc}$"
               fi
-            done < "$1"
 
-            local result=""
-            for p in "${patterns[@]}"; do
-              result+="${result:+|}${p}"
-            done
-            echo "$result"
+              RULES_PATTERN+=("$pattern")
+              RULES_NEGATE+=("$negate")
+            done < "$1"
           }
 
-          EXCLUDE_PATTERN="$(build_exclude_pattern "$DOCIGNORE")"
+          is_excluded() {
+            local filepath="$1"
+            local state=1
+            local i
+            for (( i=0; i<${#RULES_PATTERN[@]}; i++ )); do
+              if echo "$filepath" | grep -qiE "${RULES_PATTERN[$i]}"; then
+                if [[ "${RULES_NEGATE[$i]}" == "true" ]]; then
+                  state=1
+                else
+                  state=0
+                fi
+              fi
+            done
+            return $state
+          }
+
+          parse_rules "$DOCIGNORE"
 
           mapfile -t ALL_FILES < <(
-            find . -not -path './docs/*' -not -path './.git/*' -type f \
-              | sed 's|^\./||' \
-              | { [[ -n "$EXCLUDE_PATTERN" ]] && grep -viE "$EXCLUDE_PATTERN" || cat; } \
-              | sort
+            while IFS= read -r file; do
+              is_excluded "$file" || echo "$file"
+            done < <(
+              find . -not -path './docs/*' -not -path './.git/*' -type f \
+                | sed 's|^\./||' \
+                | sort
+            )
           )
 
           TMPDIR_WORK="$(mktemp -d)"
