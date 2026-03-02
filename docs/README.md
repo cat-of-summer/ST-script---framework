@@ -19,10 +19,6 @@
 - [st_validator](st_validator/)
 - [st_widget](st_widget/)
 
-## Файлы
-
-- [connect CDN.txt](connect CDN.txt.md)
-
 <!-- DOCGEN:END -->
 
 ## Как подключить?
