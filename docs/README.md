@@ -4,6 +4,7 @@
 ## Папки
 
 - [AjaxCardsLoaderXHR](AjaxCardsLoaderXHR/)
+- [examples](examples/)
 - [st_accordion](st_accordion/)
 - [st_app](st_app/)
 - [st_button_widget](st_button_widget/)
