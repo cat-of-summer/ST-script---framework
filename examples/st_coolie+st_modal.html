@@ -49,9 +49,9 @@
 
 <script>
     const config = {
-        cookieExpires:   86400,   // 1 день (в секундах)
+        expires:         86400,   // 1 день (в секундах)
         delay:           3,       // появиться через N секунд после загрузки
-        autoClose:       300,     // автозакрытие через 5 минут (в секундах)
+        auto_close:      300,     // автозакрытие через 5 минут (в секундах)
         duration:        0.35,    // длительность анимации (сек)
 
         content: '#promo_modal',
@@ -60,16 +60,10 @@
         overlay:         true,
     };
 
+    const modal = new st_modal(config);
     st_cookie.callback(config.content, () => {
-        const modal = new st_modal({
-            ...config,
-            auto_close: config.autoClose,
-        });
         modal.show();
-    }, {
-        delay:   config.delay,
-        expires: config.cookieExpires,
-    });
+    }, config);
 </script>
 
 </body>
