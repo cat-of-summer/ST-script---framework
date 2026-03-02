@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Пример появляющегося временного рекламного окна</title>
+    <script src="../st_modal/st_modal.js"></script>
+    <script src="../st_cookie/st_cookie.js"></script>
+
+    <style>
+        [state="hidden"], [state="hiding"] { opacity: 0 }
+        [state="hidden"] .st-modal-box, [state="hiding"] .st-modal-box { transform: scale(0.85) }
+        [state="shown"]  .st-modal-box { transform: scale(1) }
+
+        .st-modal-box {
+            background: #fff;
+            border-radius: 12px;
+            padding: 32px 40px;
+            min-width: 300px;
+            max-width: 90vw;
+            box-shadow: 0 8px 32px rgba(0,0,0,.18);
+            position: relative;
+            text-align: center;
+            font-family: sans-serif;
+        }
+        .st-modal-box .close-btn {
+            position: absolute;
+            top: 10px; right: 14px;
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            line-height: 1;
+            color: #888;
+        }
+        .st-modal-box .close-btn:hover { color: #333 }
+    </style>
+</head>
+<body>
+
+<div display="hidden">
+    <div id="promo_modal" class="st-modal-box">
+        <button class="close-btn" action="close">✕</button>
+        <div>Content</div>
+    </div>
+</div>
+
+<script>
+    const config = {
+        cookieExpires:   86400,   // 1 день (в секундах)
+        delay:           3,       // появиться через N секунд после загрузки
+        autoClose:       300,     // автозакрытие через 5 минут (в секундах)
+        duration:        0.35,    // длительность анимации (сек)
+
+        content: '#promo_modal',
+
+        location:        'center center',
+        overlay:         true,
+    };
+
+    if (!st_cookie.get(config.cookieName)) {
+        const modal = new st_modal({
+            ...config,
+            auto_close: config.autoClose,
+            on_hide: () => st_cookie.set(config.content, true, { expires: config.cookieExpires }),
+        });
+
+        setTimeout(() => modal.show(), config.delay * 1000);
+    }
+</script>
+
+</body>
+</html>
