@@ -60,15 +60,16 @@
         overlay:         true,
     };
 
-    if (!st_cookie.get(config.cookieName)) {
+    st_cookie.callback(config.content, () => {
         const modal = new st_modal({
             ...config,
             auto_close: config.autoClose,
-            on_hide: () => st_cookie.set(config.content, true, { expires: config.cookieExpires }),
         });
-
-        setTimeout(() => modal.show(), config.delay * 1000);
-    }
+        modal.show();
+    }, {
+        delay:   config.delay,
+        expires: config.cookieExpires,
+    });
 </script>
 
 </body>
