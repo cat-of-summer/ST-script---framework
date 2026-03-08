@@ -903,16 +903,20 @@ class App extends HTMLElement {
                 this.#applySingleAttributeOption(name);
             }
             if (!this.#rendered) {
-                let initialContent = '';
                 if (this.childNodes.length > 0) {
                     let hasNonEmptyContent = Array.from(this.childNodes).some(node =>
                         node.nodeType === Node.ELEMENT_NODE ||
                         (node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== '')
                     );
-                    if (hasNonEmptyContent)
-                        initialContent = this.innerHTML;
+                    if (hasNonEmptyContent) {
+                        if (this.#template)
+                            this.applyTemplate(this.innerHTML);
+                        else
+                            this.#template = this.innerHTML;
+                    }
                 }
-                this.applyTemplate(initialContent);
+                if (!this.#rendered)
+                    this.applyTemplate();
             }
             if (this.#booted === true && !this.#attrObserver) {
                 this.#attrObserver = new MutationObserver(mutations => {

@@ -134,6 +134,7 @@
             <li><strong>Атрибуты с <code>:</code>:</strong> передача данных в дочерние компоненты; <code>:attr</code> без значения — значение из прототипа (в т.ч. JSON-объект)</li>
             <li><strong>Вложенные компоненты:</strong> <code>&lt;st-app&gt;</code> внутри <code>&lt;st-app&gt;</code></li>
             <li><strong>innerHTML как шаблон:</strong> переопределение template через содержимое элемента</li>
+            <li><strong>applyTemplate():</strong> переключение шаблонов на лету; без аргументов — возврат к базовому</li>
             <li><strong>watch:</strong> <code>this.watch(source, callback, options?)</code>, в колбэке <code>unwatch()</code> — третий аргумент</li>
         </ul>
     </div>
@@ -252,6 +253,61 @@
         <p>Список элементов (цикл <code>#for</code>) — клик по пункту передаёт значение во вложенный <code>&lt;st-app&gt;</code> через атрибут <code>:item</code>; блок деталей рендерится из innerHTML дочернего компонента. Показаны: реактивность, <code>#show</code>, <code>@click</code>, вложенный компонент, передача данных через <code>:</code>, шаблон из innerHTML.</p>
         <st-app ::app="combined"></st-app>
     </div>
+
+    <!-- Пример 12: applyTemplate — переключение шаблонов -->
+    <div class="example">
+        <h2>12. applyTemplate() — переключение между const-шаблонами</h2>
+        <p>Cтартует с экрана загрузки. После задержки автоматически переключается на главный экран. Навигация между экранами через <code>applyTemplate()</code>.</p>
+        <div class="note">
+            <strong>Примечание:</strong>
+            <code>applyTemplate()</code> без аргументов всегда возвращается к базовому <code>template</code> из <code>App.create()</code>.
+            <code>applyTemplate(html)</code> одноразово применяет переданную разметку, не перезаписывая базовый шаблон.
+            Реактивные данные (<code>name</code>, <code>theme</code>, <code>counter</code>) сохраняются при любом переключении.
+        </div>
+        <st-app ::app="templateSwitcher"></st-app>
+    </div>
+
+    <script>
+        var TMPL_LOADING = `
+            <div style="text-align:center;padding:48px 20px;color:#888;">
+                <div style="font-size:48px;margin-bottom:12px;">&#9203;</div>
+                <h3 style="color:#555;">Загрузка данных...</h3>
+                <p style="font-size:13px;">Симуляция задержки 1.5с</p>
+            </div>`;
+
+        var TMPL_SETTINGS = `
+            <div style="padding:20px;background:#f0f8ff;border-radius:8px;">
+                <h3>⚙️ Настройки</h3>
+                <div style="margin:10px 0;">
+                    <label>Имя:&nbsp;<input type="text" #model="name" style="width:180px;"></label>
+                </div>
+                <div style="margin:10px 0;">
+                    <label>Тема:&nbsp;
+                        <select #model="theme">
+                            <option value="light">Светлая</option>
+                            <option value="dark">Тёмная</option>
+                        </select>
+                    </label>
+                </div>
+                <p style="color:#666;font-size:13px;margin-top:10px;">
+                    Изменения реактивны и сохраняются при смене шаблона.
+                </p>
+                <button @click="applyTemplate()">← Назад</button>
+            </div>`;
+
+        var TMPL_ABOUT = `
+            <div style="padding:20px;background:#f0fff0;border-radius:8px;text-align:center;">
+                <div style="font-size:48px;margin-bottom:12px;">&#8505;&#65039;</div>
+                <h3>О приложении</h3>
+                <p style="margin:6px 0;">Автор: <strong>{{ name }}</strong></p>
+                <p style="margin:6px 0;">Текущая тема: <strong>{{ theme }}</strong></p>
+                <p style="margin:12px 0;font-size:13px;color:#666;">
+                    Шаблон загружен через <code>applyTemplate(TMPL_ABOUT)</code>.<br>
+                    Базовый <code>#template</code> при этом не изменился.
+                </p>
+                <button @click="applyTemplate()">← Назад</button>
+            </div>`;
+    </script>
 
     <script>
         // Пример 1: Счётчик
@@ -852,6 +908,37 @@
             app: 'detailsComponent',
             item: '',
             template: ''
+        });
+
+        // Пример 12: applyTemplate() — переключение const-шаблонов
+        App.create({
+            app: 'templateSwitcher',
+            name: 'Пользователь',
+            theme: 'light',
+            counter: 0,
+
+            setup() {
+                this.applyTemplate(TMPL_LOADING);
+                setTimeout(() => this.applyTemplate(), 1500);
+            },
+
+            template: `
+                <div style="padding:20px;background:#f9f9f9;border-radius:8px;">
+                    <h3>🏠 Главный экран</h3>
+                    <p>Привет, <strong>{{ name }}</strong>! Тема: <strong>{{ theme }}</strong>.</p>
+                    <p>Счётчик: <strong>{{ counter }}</strong>
+                        <button @click="counter++" style="margin-left:8px;">+1</button>
+                    </p>
+                    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+                        <button @click="applyTemplate(TMPL_SETTINGS)">⚙️ Настройки</button>
+                        <button @click="applyTemplate(TMPL_ABOUT)">ℹ️ О приложении</button>
+                        <button @click="applyTemplate(TMPL_LOADING); setTimeout(() => applyTemplate(), 1500)">🔄 Перезагрузить</button>
+                    </div>
+                    <p style="color:#999;font-size:12px;margin-top:10px;">
+                        Кнопка «Назад» в панелях вызывает <code>applyTemplate()</code> без аргументов — возвращает этот шаблон.
+                    </p>
+                </div>
+            `
         });
     </script>
 
