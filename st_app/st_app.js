@@ -1,7 +1,7 @@
 class App extends HTMLElement {
     static {customElements.define('st-app', this)}
 
-    static boolean_attributes = new Set(['disabled', 'checked', 'readonly', 'required', 'selected', 'hidden', 'open', 'autofocus']);
+    static #boolean_attributes = new Set(['disabled', 'checked', 'readonly', 'required', 'selected', 'hidden', 'open', 'autofocus']);
     static #apps = new Map();
     static #instances = new Set();
 
@@ -14,6 +14,17 @@ class App extends HTMLElement {
             if (instance.#booted !== true)
                 instance.#boot();
         });
+    }
+
+    static extend(app, options = {}) {
+        let base = App.#apps.get(app);
+        if (!base)
+            throw new Error(`Application "${app}" not found!`);
+        let baseConfig = base.config;
+        let merged = { ...baseConfig, ...options };
+        if (baseConfig.events || options.events)
+            merged.events = { ...baseConfig.events, ...options.events };
+        return App.create(merged);
     }
 
     #booted = false;
@@ -59,6 +70,10 @@ class App extends HTMLElement {
         });
     }
 
+    get template() {
+        return this.#template;
+    }
+
     get attrs() {
         return {
             get: (name) => this.getAttribute(name),
@@ -75,6 +90,31 @@ class App extends HTMLElement {
         let event = new CustomEvent(event_name, {cancelable: true, ...options, detail});
         this.dispatchEvent(event);
         return event;
+    }
+
+    applyTemplate(template = '') {
+        let tplContent = template || this.#template;
+        this.#cleanupBindings(this.#bindings);
+        this.#bindings = [];
+        this.innerHTML = '';
+        if (tplContent) {
+            let tpl = document.createElement('template');
+            tpl.innerHTML = tplContent.trim();
+            let fragment = tpl.content.cloneNode(true);
+            Array.from(fragment.childNodes).forEach(child => this.#processNode(child));
+            this.#mount(fragment);
+        }
+        this.#rendered = true;
+        this.dispatch('rendered');
+    }
+
+    #mount(node) {
+        HTMLElement.prototype.appendChild.call(this, node);
+    }
+
+    clone(options = {}) {
+        let app = this.attrs.get('::app');
+        return App.extend(app, options);
     }
 
     watch(source, callback, options = {}) {
@@ -423,7 +463,7 @@ class App extends HTMLElement {
             let newValue;
             if (element.type === 'checkbox')
                 newValue = element.checked;
-            else if (element.type === 'number')
+            else if (element.type === 'number' || element.type === 'range')
                 newValue = element.valueAsNumber;
             else
                 newValue = element.value;
@@ -604,7 +644,7 @@ class App extends HTMLElement {
                 parts[index] = value == null ? '' : String(value);
             });
             let finalValue = parts.join('');
-            if (App.boolean_attributes.has(attrName)) {
+            if (App.#boolean_attributes.has(attrName)) {
                 let falsy = finalValue === '' || finalValue === 'false' || finalValue === '0' || finalValue === 'null' || finalValue === 'undefined' || !finalValue;
                 if (falsy)
                     element.removeAttribute(attrName);
@@ -863,25 +903,16 @@ class App extends HTMLElement {
                 this.#applySingleAttributeOption(name);
             }
             if (!this.#rendered) {
+                let initialContent = '';
                 if (this.childNodes.length > 0) {
                     let hasNonEmptyContent = Array.from(this.childNodes).some(node =>
                         node.nodeType === Node.ELEMENT_NODE ||
                         (node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== '')
                     );
-                    if (hasNonEmptyContent) {
-                        this.#template = this.innerHTML;
-                        this.innerHTML = '';
-                    }
+                    if (hasNonEmptyContent)
+                        initialContent = this.innerHTML;
                 }
-                if (this.#template) {
-                    let template = document.createElement('template');
-                    template.innerHTML = this.#template.trim();
-                    let fragment = template.content.cloneNode(true);
-                    Array.from(fragment.childNodes).forEach(child => this.#processNode(child));
-                    this.appendChild(fragment);
-                    this.#rendered = true;
-                    this.dispatch('rendered');
-                }
+                this.applyTemplate(initialContent);
             }
             if (this.#booted === true && !this.#attrObserver) {
                 this.#attrObserver = new MutationObserver(mutations => {
