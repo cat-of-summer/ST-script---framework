@@ -518,6 +518,7 @@ class App extends HTMLElement {
             } else
                 break;
         }
+        element.removeAttribute(attr.name);
         element.remove();
         let currentBranch = null;
         let effect = this.#effect(() => {
