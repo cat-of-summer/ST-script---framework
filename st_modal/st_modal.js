@@ -1,4 +1,4 @@
-class st_modal {
+export default class st_modal {
     static #instance = Symbol();
 
     modal;
@@ -99,6 +99,8 @@ class st_modal {
             transition: `all ${this.#params.duration}s`,
             pointerEvents: 'none',
             display: 'none',
+            overflowY: 'auto',
+            alignItems: 'flex-start',
         });
         
         this.modal.setAttribute('state', 'hidden');
@@ -135,34 +137,21 @@ class st_modal {
         this.container = document.createElement('container');
         this.container[st_modal.#instance] = this;
 
+        const loc = (this.#params.location || '').toLowerCase().split(/\s+/);
+
         Object.assign(this.container.style, {
-            position: 'absolute',
-            overflow: 'hidden',
+            position: 'relative',
+            flexShrink: '0',
             width: 'max-content',
             height: 'max-content',
             maxWidth: '100vw',
-            maxHeight: '100vh',
             zIndex: ++this.#params.zIndex,
             transition: 'inherit',
             pointerEvents: 'all',
-
-            ...(() => {
-                let location = (this.#params.location || '').toLowerCase().split(/\s+/);
-
-                let style = {
-                    top: location.includes('top') ? 0 : location.includes('bottom') ? undefined : '50%',
-                    bottom: location.includes('bottom') ? 0 : undefined,
-                    left: location.includes('left') ? 0 : location.includes('right') ? undefined : '50%',
-                    right: location.includes('right') ? 0 : undefined,
-                };
-
-                let tx = style.left === '50%' ? 'translateX(-50%)' : '';
-                let ty = style.top === '50%' ? 'translateY(-50%)' : '';
-
-                if (tx || ty) style.transform = `${tx} ${ty}`.trim();
-
-                return style;
-            })()
+            marginTop:    loc.includes('top')    ? '0' : 'auto',
+            marginBottom: loc.includes('bottom') ? '0' : 'auto',
+            marginLeft:   loc.includes('left')   ? '0' : 'auto',
+            marginRight:  loc.includes('right')  ? '0' : 'auto',
         });
 
         this.modal.append(this.container);
@@ -187,7 +176,7 @@ class st_modal {
             
             clearTimeout(timeout);
 
-            this.modal.style.display = 'block';
+            this.modal.style.display = 'flex';
 
             requestAnimationFrame(() => {
                 this.#state = params.process;
