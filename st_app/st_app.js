@@ -1,4 +1,4 @@
-class App extends HTMLElement {
+export default class App extends HTMLElement {
     static {customElements.define('st-app', this)}
 
     static #boolean_attributes = new Set(['disabled', 'checked', 'readonly', 'required', 'selected', 'hidden', 'open', 'autofocus']);
