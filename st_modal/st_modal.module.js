@@ -1,4 +1,4 @@
-class st_modal {
+export default class st_modal {
     static #instance = Symbol();
 
     modal;
