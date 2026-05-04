@@ -142,6 +142,7 @@ class st_modal {
             right: '0',
             bottom: '0',
             overflowY: 'auto',
+            overflowX: 'clip',
             display: 'flex',
             alignItems: 'flex-start',
             justifyContent: loc.includes('left') ? 'flex-start' : loc.includes('right') ? 'flex-end' : 'center',
