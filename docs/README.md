@@ -15,6 +15,7 @@
 - [st_observer](st_observer/)
 - [st_select](st_select/)
 - [st_system](st_system/)
+- [st_typograf](st_typograf/)
 - [st_uploader](st_uploader/)
 - [st_validator](st_validator/)
 - [st_widget](st_widget/)
