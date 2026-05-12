@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>st_typograf — демо</title>
+
+    <style>
+        body {
+            font: 16px/1.6 Georgia, serif;
+            max-width: 900px;
+            margin: 32px auto;
+            padding: 0 16px;
+            color: #222;
+        }
+
+        h1, h2 { font-family: system-ui, sans-serif; }
+
+        .demo {
+            resize: horizontal;
+            overflow: auto;
+            min-width: 200px;
+            max-width: 100%;
+            width: 480px;
+            padding: 16px 20px;
+            border: 1px dashed #888;
+            border-radius: 6px;
+            background: #fafafa;
+            margin-bottom: 24px;
+        }
+
+        .demo p { margin: 0 0 12px; }
+        .demo p:last-child { margin-bottom: 0; }
+
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            font: inherit;
+            padding: 6px 12px;
+            border: 1px solid #888;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+        }
+        button:hover { background: #eee; }
+
+        .spacer {
+            height: 120vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #aaa;
+            font-style: italic;
+        }
+
+        /* Подсветка NBSP — для наглядности.
+           Поскольку NBSP пишется прямо в textContent, его не видно глазом;
+           ставим у body класс .highlight, чтобы заменить все NBSP на видимый
+           маркер через JS — см. кнопку «Подсветить NBSP» ниже. */
+        mark.nbsp {
+            background: #ffe066;
+            border-radius: 2px;
+            padding: 0 1px;
+        }
+    </style>
+
+    <script src="st_typograf.js"></script>
+</head>
+<body>
+
+    <h1>st_typograf — демо</h1>
+
+    <p>
+        Тяните за нижний правый угол блока, чтобы менять его ширину. После
+        каждого ресайза текст пересобирается из оригинала, висячие предлоги/союзы/частицы
+        приклеиваются к следующему слову через&nbsp;NBSP.
+    </p>
+
+    <div class="controls">
+        <button id="apply">Применить st_typograf к #demo</button>
+        <button id="add-text">Добавить параграф (тест MutationObserver)</button>
+        <button id="highlight">Подсветить NBSP</button>
+        <button id="reset">Сбросить страницу</button>
+    </div>
+
+    <h2>Блок #demo</h2>
+
+    <div class="demo" id="demo">
+        <p>
+            В небольшом доме на окраине города жил старый часовщик. Он умел
+            делать такие часы, что они шли точно и не сбивались даже в самые
+            холодные зимы.
+        </p>
+        <p>
+            Каждое утро он садился за стол у окна и работал до тех пор, пока
+            солнце не уходило за крыши соседних домов. А когда наступал вечер,
+            он откладывал инструменты и смотрел, как над городом загораются
+            первые звёзды.
+        </p>
+        <p>
+            Однажды к нему пришёл мальчик и принёс сломанные карманные часы.
+            «Их подарил мне дедушка, — сказал он, — но теперь они не идут».
+            Часовщик взял часы, открыл крышку и улыбнулся: внутри всё было
+            в порядке, не хватало лишь одной маленькой детали — той, что
+            соединяет колёсики между собой.
+        </p>
+    </div>
+
+    <h2>Блок #lazy (ниже viewport, для теста IntersectionObserver)</h2>
+
+    <p>
+        Этот блок размещён под отступом высотой в 120vh. Откройте devtools и
+        поставьте breakpoint/console.log внутри <code>#reapply_all</code>, чтобы
+        убедиться, что при первом применении обработка ноды происходит, а вот
+        вызов <code>preventWidows</code> на скрытом блоке отложится: ресайз
+        пометит флаг <code>pending_resize</code>, и пересчёт случится только
+        когда блок попадёт в viewport.
+    </p>
+
+    <div class="spacer">↓ прокрутите ниже ↓</div>
+
+    <div class="demo" id="lazy">
+        <p>
+            И вот здесь, в самом низу страницы, тоже есть текст с висячими
+            предлогами и союзами, который тоже хочется собрать аккуратно.
+            Если вы дотащили скролл сюда, значит IntersectionObserver уже
+            сработал и блок прошёл обработку.
+        </p>
+    </div>
+
+    <script>
+        const apply_btn     = document.getElementById('apply');
+        const add_btn       = document.getElementById('add-text');
+        const highlight_btn = document.getElementById('highlight');
+        const reset_btn     = document.getElementById('reset');
+        const demo          = document.getElementById('demo');
+        const lazy          = document.getElementById('lazy');
+
+        apply_btn.addEventListener('click', () => {
+            st_typograf.preventWidows('#demo');
+            st_typograf.preventWidows('#lazy');
+            apply_btn.disabled = true;
+            apply_btn.textContent = 'Применено';
+        });
+
+        add_btn.addEventListener('click', () => {
+            const p = document.createElement('p');
+            p.textContent = 'Новый параграф добавлен через JS. В нём тоже есть предлоги и союзы, и они должны приклеиться через NBSP примерно через один idle-tick после вставки.';
+            demo.appendChild(p);
+        });
+
+        highlight_btn.addEventListener('click', () => {
+            for (const block of [demo, lazy]) {
+                const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+                const replacements = [];
+                let n;
+                while ((n = walker.nextNode())) {
+                    if (n.nodeValue.includes(' ')) replacements.push(n);
+                }
+                for (const node of replacements) {
+                    const frag = document.createDocumentFragment();
+                    const parts = node.nodeValue.split(' ');
+                    parts.forEach((part, i) => {
+                        frag.append(document.createTextNode(part));
+                        if (i < parts.length - 1) {
+                            const m = document.createElement('mark');
+                            m.className = 'nbsp';
+                            m.textContent = ' ';
+                            frag.append(m);
+                        }
+                    });
+                    node.replaceWith(frag);
+                }
+            }
+            highlight_btn.disabled = true;
+        });
+
+        reset_btn.addEventListener('click', () => location.reload());
+    </script>
+</body>
+</html>
