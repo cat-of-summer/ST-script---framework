@@ -143,49 +143,49 @@
     <div class="example">
         <h2>1. Счётчик (Базовая реактивность)</h2>
         <p>Демонстрация базовой реактивности, интерполяции и обработки событий.</p>
-        <st-app ::app="counter"></st-app>
+        <st-app app="counter"></st-app>
     </div>
 
     <!-- Пример 2: Условный рендеринг -->
     <div class="example">
         <h2>2. Условный рендеринг (#if/#else-if/#else)</h2>
         <p>Показ/скрытие элементов на основе условий.</p>
-        <st-app ::app="conditional"></st-app>
+        <st-app app="conditional"></st-app>
     </div>
 
     <!-- Пример 3: Списки -->
     <div class="example">
         <h2>3. Списки и циклы (#for)</h2>
         <p>Директива <code>#for</code>: для массивов доступны элемент и <code>$index</code>; для объектов — значение и <code>$key</code>.</p>
-        <st-app ::app="list"></st-app>
+        <st-app app="list"></st-app>
     </div>
 
     <!-- Пример 4: Формы -->
     <div class="example">
         <h2>4. Формы и двусторонняя привязка (#model)</h2>
         <p>Связывание полей форм с данными через <code>#model</code> и вычисляемые свойства.</p>
-        <st-app ::app="form"></st-app>
+        <st-app app="form"></st-app>
     </div>
 
     <!-- Пример 5: Todo List -->
     <div class="example">
         <h2>5. Todo List (Комплексный пример)</h2>
         <p>Приложение с несколькими вычисляемыми свойствами и методами.</p>
-        <st-app ::app="todo"></st-app>
+        <st-app app="todo"></st-app>
     </div>
 
     <!-- Пример 5a: watch() и unwatch() -->
     <div class="example">
         <h2>5a. watch() и unwatch()</h2>
         <p>Отслеживание свойств, геттеров и вызовов методов. Остановка из колбэка через <code>unwatch()</code> (третий аргумент). Откройте консоль.</p>
-        <st-app ::app="watchDemo"></st-app>
+        <st-app app="watchDemo"></st-app>
     </div>
 
     <!-- Пример 6: Вложенные объекты -->
     <div class="example">
         <h2>6. Вложенные реактивные объекты</h2>
         <p>Реактивность работает на любом уровне вложенности объектов.</p>
-        <st-app ::app="nested"></st-app>
+        <st-app app="nested"></st-app>
     </div>
 
     <!-- Пример 7: Атрибуты с : -->
@@ -196,7 +196,7 @@
             <strong>Примечание:</strong> Атрибуты <code>:initial-count</code>, <code>:step</code> и <code>:label</code> 
             преобразуются в свойства <code>initialCount</code>, <code>step</code> и <code>label</code> компонента.
         </div>
-        <st-app ::app="withProps" :initial-count="100" :step="5" :label="'Счётчик с настройками'"></st-app>
+        <st-app app="withProps" :initial-count="100" :step="5" :label="'Счётчик с настройками'"></st-app>
     </div>
 
     <!-- Пример 7a: Обратная совместимость — свойство JSON-объект из прототипа -->
@@ -204,10 +204,10 @@
         <h2>7a. Обратная совместимость: свойство — JSON-объект из прототипа</h2>
         <p>Если атрибут <code>:attr</code> указан без значения, значение берётся из конфига <code>App.create()</code>. Для объекта атрибут синхронизируется с JSON-строкой.</p>
         <div class="note">
-            <strong>Примечание:</strong> Используется <code>&lt;st-app ::app="jsonProps" :options&gt;</code> — без значения у <code>:options</code>. 
+            <strong>Примечание:</strong> Используется <code>&lt;st-app app="jsonProps" :options&gt;</code> — без значения у <code>:options</code>. 
             Свойство <code>options</code> задано в прототипе объектом <code>{ theme, limit }</code> и подтягивается в компонент; при изменении свойства атрибут обновляется.
         </div>
-        <st-app ::app="jsonProps" :options></st-app>
+        <st-app app="jsonProps" :options></st-app>
     </div>
 
     <!-- Пример 8: innerHTML как шаблон -->
@@ -218,7 +218,7 @@
             <strong>Примечание:</strong> Приложение <code>inlineTemplate</code> объявлено с пустым <code>template</code>, 
             но использует разметку внутри элемента.
         </div>
-        <st-app ::app="inlineTemplate">
+        <st-app app="inlineTemplate">
             <div style="padding: 20px; background: #e3f2fd; border-radius: 8px;">
                 <h3>{{ title }}</h3>
                 <p>Текст из innerHTML: <strong>{{ message }}</strong></p>
@@ -237,21 +237,21 @@
             <strong>Примечание:</strong> Дочерний компонент получает данные через атрибуты <code>:count</code> и <code>:name</code>.
             После исправления бага #6, изменения в родителе автоматически синхронизируются с дочерним компонентом.
         </div>
-        <st-app ::app="parent"></st-app>
+        <st-app app="parent"></st-app>
     </div>
 
     <!-- Пример 10: Вложенные компоненты (2 уровня) -->
     <div class="example">
         <h2>10. Вложенные компоненты (родитель → ребёнок → внук)</h2>
         <p>Трёхуровневая вложенность компонентов с передачей данных между уровнями.</p>
-        <st-app ::app="grandparent"></st-app>
+        <st-app app="grandparent"></st-app>
     </div>
 
     <!-- Пример 11: Комбинированный пример -->
     <div class="example">
         <h2>11. Комбинированный пример (все возможности вместе)</h2>
         <p>Список элементов (цикл <code>#for</code>) — клик по пункту передаёт значение во вложенный <code>&lt;st-app&gt;</code> через атрибут <code>:item</code>; блок деталей рендерится из innerHTML дочернего компонента. Показаны: реактивность, <code>#show</code>, <code>@click</code>, вложенный компонент, передача данных через <code>:</code>, шаблон из innerHTML.</p>
-        <st-app ::app="combined"></st-app>
+        <st-app app="combined"></st-app>
     </div>
 
     <!-- Пример 12: applyTemplate — переключение шаблонов -->
@@ -264,7 +264,7 @@
             <code>applyTemplate(html)</code> одноразово применяет переданную разметку, не перезаписывая базовый шаблон.
             Реактивные данные (<code>name</code>, <code>theme</code>, <code>counter</code>) сохраняются при любом переключении.
         </div>
-        <st-app ::app="templateSwitcher"></st-app>
+        <st-app app="templateSwitcher"></st-app>
     </div>
 
     <script>
@@ -781,7 +781,7 @@
                     <button @click="incrementShared()">➕ Увеличить счётчик</button>
                     
                     <div style="margin-top: 15px;">
-                        <st-app ::app="child" :count="{{ sharedCount }}" :name="{{ userName }}"></st-app>
+                        <st-app app="child" :count="{{ sharedCount }}" :name="{{ userName }}"></st-app>
                     </div>
                 </div>
             `
@@ -824,7 +824,7 @@
                     <button @click="updateData()">🎲 Изменить данные</button>
                     
                     <div style="margin-top: 15px;">
-                        <st-app ::app="parent2" :data="{{ data }}" :level="'Родитель'"></st-app>
+                        <st-app app="parent2" :data="{{ data }}" :level="'Родитель'"></st-app>
                     </div>
                 </div>
             `
@@ -841,7 +841,7 @@
                     <p>Получено: <strong>{{ data }}</strong></p>
                     
                     <div style="margin-top: 15px;">
-                        <st-app ::app="grandchild" :data="{{ data }}" :level="'Внук'"></st-app>
+                        <st-app app="grandchild" :data="{{ data }}" :level="'Внук'"></st-app>
                     </div>
                 </div>
             `
@@ -886,7 +886,7 @@
                     </ul>
                     
                     <div #show="showDetails" style="margin-top: 20px;">
-                        <st-app ::app="detailsComponent" :item="{{ selectedItem }}">
+                        <st-app app="detailsComponent" :item="{{ selectedItem }}">
                             <div class="nested-box" style="background: #f3e5f5; border-color: #9c27b0;">
                                 <h4>📋 Детали элемента</h4>
                                 <p>Выбран: <strong>{{ item }}</strong></p>

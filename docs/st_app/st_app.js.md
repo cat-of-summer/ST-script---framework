@@ -83,7 +83,7 @@ App.create({
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `app` | `string` | Уникальный идентификатор; совпадает со значением атрибута `::app` на элементе |
+| `app` | `string` | Уникальный идентификатор; совпадает со значением атрибута `app` на элементе |
 | `template` | `string` | HTML-шаблон компонента. Если пустая строка — используется `innerHTML` элемента |
 | `setup()` | `function` | Вызывается один раз после инициализации реактивности, до рендеринга. `this` — экземпляр компонента |
 | `events` | `object` | Карта `{ eventName: handler }` — навешиваются через `addEventListener` на элемент |
@@ -115,7 +115,7 @@ App.extend('base', {
 ```
 
 ```html
-<st-app ::app="extended"></st-app>
+<st-app app="extended"></st-app>
 <!-- Выведет: Расширенный: 100 -->
 ```
 
@@ -125,7 +125,7 @@ App.extend('base', {
 
 ```html
 <!-- Монтирование по id -->
-<st-app ::app="counter"></st-app>
+<st-app app="counter"></st-app>
 
 <!-- Компонент без App.create() — только атрибуты + innerHTML как шаблон -->
 <st-app :title="Привет" :count="42">
@@ -134,7 +134,7 @@ App.extend('base', {
 </st-app>
 ```
 
-### Атрибут `::app`
+### Атрибут `app`
 
 Связывает HTML-элемент с конфигурацией, зарегистрированной через `App.create()`. Если элемент появляется в DOM раньше вызова `App.create()` — он ждёт регистрации.
 
@@ -406,7 +406,7 @@ App.create({
 
 ```html
 <!-- Передача примитивов -->
-<st-app ::app="counter" :initial-count="100" :step="5" :label="'Мой счётчик'"></st-app>
+<st-app app="counter" :initial-count="100" :step="5" :label="'Мой счётчик'"></st-app>
 
 <!-- Kebab-case имён атрибутов → camelCase свойств -->
 <!-- :initial-count → initialCount, :my-data → myData -->
@@ -418,7 +418,7 @@ App.create({
 
 ```html
 <!-- :options без значения — значение берётся из конфига App.create() -->
-<st-app ::app="myApp" :options></st-app>
+<st-app app="myApp" :options></st-app>
 ```
 
 ```js
@@ -438,7 +438,7 @@ App.create({
 
 ```html
 <!-- В шаблоне родительского компонента -->
-<st-app ::app="child" :count="{{ sharedCount }}" :name="{{ userName }}"></st-app>
+<st-app app="child" :count="{{ sharedCount }}" :name="{{ userName }}"></st-app>
 ```
 
 При изменении `sharedCount` в родителе атрибут `:count` на дочернем элементе обновляется автоматически, дочерний компонент получает новое значение.
@@ -719,7 +719,7 @@ App.create({
             <input #model="userName">
 
             <!-- Передача реактивных значений дочернему компоненту -->
-            <st-app ::app="child"
+            <st-app app="child"
                 :count="{{ sharedCount }}"
                 :name="{{ userName }}">
             </st-app>
@@ -747,7 +747,7 @@ App.create({
 
 ```html
 <!-- grandparent → parent2 → grandchild -->
-<st-app ::app="grandparent"></st-app>
+<st-app app="grandparent"></st-app>
 ```
 
 ```js
@@ -756,14 +756,14 @@ App.create({
     template: `
         <div>
             <button @click="data = Math.random() * 100 | 0">🎲</button>
-            <st-app ::app="parent2" :data="{{ data }}"></st-app>
+            <st-app app="parent2" :data="{{ data }}"></st-app>
         </div>
     `
 });
 
 App.create({
     app: 'parent2', data: 0,
-    template: `<st-app ::app="grandchild" :data="{{ data }}"></st-app>`
+    template: `<st-app app="grandchild" :data="{{ data }}"></st-app>`
 });
 
 App.create({
@@ -779,7 +779,7 @@ App.create({
 Если `template: ''` (или `template` не задан), а у элемента `<st-app>` есть содержимое — оно будет использовано как шаблон:
 
 ```html
-<st-app ::app="inlineTemplate">
+<st-app app="inlineTemplate">
     <div>
         <h3>{{ title }}</h3>
         <input type="text" #model="message">
@@ -817,7 +817,7 @@ App.create({
 
 ### `this.clone(options?)`
 
-Создаёт копию компонента через `App.extend()`, используя `app` из текущего атрибута `::app`:
+Создаёт копию компонента через `App.extend()`, используя `app` из текущего атрибута `app`:
 
 ```js
 // Внутри метода компонента:
@@ -1031,8 +1031,8 @@ App.create({
 
 ```html
 <!-- Монтирование -->
-<st-app ::app="myApp"></st-app>
-<st-app ::app="myApp" :prop="value" :number="42" :flag="true"></st-app>
+<st-app app="myApp"></st-app>
+<st-app app="myApp" :prop="value" :number="42" :flag="true"></st-app>
 
 <!-- Интерполяция -->
 {{ expression }}
@@ -1068,7 +1068,7 @@ App.create({
 <button disabled="{{ !isValid }}">Отправить</button>
 
 <!-- Передача данных дочернему компоненту -->
-<st-app ::app="child" :value="{{ parentData }}"></st-app>
+<st-app app="child" :value="{{ parentData }}"></st-app>
 
 <!-- Пропустить поддерево -->
 <pre #pre>{{ не будет обработано }}</pre>
