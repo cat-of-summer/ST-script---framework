@@ -1,4 +1,4 @@
-export default class App extends HTMLElement {
+class App extends HTMLElement {
     static {customElements.define('st-app', this)}
 
     static #boolean_attributes = new Set(['disabled', 'checked', 'readonly', 'required', 'selected', 'hidden', 'open', 'autofocus']);
@@ -86,10 +86,20 @@ export default class App extends HTMLElement {
         };
     }
 
-    dispatch(event_name, detail, options = {}) {
-        let event = new CustomEvent(event_name, {cancelable: true, ...options, detail});
-        this.dispatchEvent(event);
-        return event;
+    addEventListener(type, listener, options) {
+        if (type === 'setup' && this.#rendered) {
+            queueMicrotask(() => listener(new CustomEvent('setup')));
+            return;
+        }
+        super.addEventListener(type, listener, options);
+    }
+
+    dispatchEvent(event, detail = null, options = {}) {
+        if (typeof event === 'string') {
+            let customEvent = new CustomEvent(event, {cancelable: true, ...options, detail});
+            return super.dispatchEvent(customEvent);
+        }
+        return super.dispatchEvent(event);
     }
 
     applyTemplate(template = '') {
@@ -105,7 +115,7 @@ export default class App extends HTMLElement {
             this.#mount(fragment);
         }
         this.#rendered = true;
-        this.dispatch('rendered');
+        this.dispatchEvent('rendered');
     }
 
     #mount(node) {
@@ -113,7 +123,7 @@ export default class App extends HTMLElement {
     }
 
     clone(options = {}) {
-        let app = this.attrs.get('::app');
+        let app = this.attrs.get('app');
         return App.extend(app, options);
     }
 
@@ -200,6 +210,36 @@ export default class App extends HTMLElement {
             return unwatch;
         }
         return () => {};
+    }
+
+    unwatch() {
+        [...this.#watchers].forEach(w => w.unwatch());
+        this.#methodWrappers.forEach(entry => {
+            [...entry.handlers].forEach(h => h.unwatch());
+        });
+    }
+
+    hasWatchers() {
+        let methodCount = 0;
+        this.#methodWrappers.forEach(entry => { methodCount += entry.handlers.length; });
+        return this.#watchers.length + methodCount;
+    }
+
+    watched(source, callback, options = {}) {
+        if (typeof source === 'string' && source.endsWith('()')) {
+            let methodName = source.slice(0, -2);
+            let entry = this.#methodWrappers.get(methodName);
+            if (entry) [...entry.handlers].forEach(h => h.unwatch());
+        } else if (typeof source === 'string') {
+            this.#watchers
+                .filter(w => w.type === 'key' && w.key === source)
+                .forEach(w => w.unwatch());
+        } else if (typeof source === 'function') {
+            this.#watchers
+                .filter(w => w.type === 'getter' && w.getter === source)
+                .forEach(w => w.unwatch());
+        }
+        return this.watch(source, callback, options);
     }
 
     #track(key) {
@@ -707,7 +747,7 @@ export default class App extends HTMLElement {
     }
 
     #boot() {
-        let app = this.attrs.get('::app');
+        let app = this.attrs.get('app');
         let prototype = App.#apps.get(app);
 
         if (prototype) {
@@ -760,12 +800,12 @@ export default class App extends HTMLElement {
                 }
             });
 
-            if (this.#booted !== false)
+            if (typeof this.#booted === 'function')
                 this.#booted();
 
             this.#booted = true;
         } else {
-            if (!this.attrs.get('::app')) {
+            if (!this.attrs.get('app')) {
                 if (typeof this.#booted === 'function')
                     this.#booted();
                 this.#booted = true;
@@ -802,7 +842,7 @@ export default class App extends HTMLElement {
     }
 
     #applySingleAttributeOption(name) {
-        if (!name.startsWith(':') || name === '::app') return;
+        if (!name.startsWith(':') || name === 'app') return;
         let propName = name.replace(/^:+/,'');
         let raw = this.getAttribute(name);
         let descriptor = Object.getOwnPropertyDescriptor(this, propName);
@@ -865,16 +905,25 @@ export default class App extends HTMLElement {
             this[propName] = val;
     }
 
-    static get observedAttributes() {
-        return [];
-    }
-
     attributeChangedCallback(name, oldValue, newValue) {
-        if (name.startsWith(':') && name !== '::app' && oldValue !== newValue && this.#booted === true)
+        if (name.startsWith(':') && name !== 'app' && oldValue !== newValue && this.#booted === true)
             this.#applySingleAttributeOption(name);
     }
 
     connectedCallback() {
+        App.#instances.add(this);
+        if (this.#booted === true) {
+            if (!this.#attrObserver) {
+                this.#attrObserver = new MutationObserver(mutations => {
+                    for (let m of mutations) {
+                        if (m.type === 'attributes' && m.attributeName && m.attributeName.startsWith(':') && m.attributeName !== 'app')
+                            this.#applySingleAttributeOption(m.attributeName);
+                    }
+                });
+                this.#attrObserver.observe(this, { attributes: true });
+            }
+            return;
+        }
         this.#boot();
         Promise.all([
             new Promise(resolve => {
@@ -898,9 +947,9 @@ export default class App extends HTMLElement {
                 setMyTimeout();
             })
         ]).then(() => {
-            this.dispatch('setup');
+            this.dispatchEvent('setup');
             for (let name of this.attrs.keys()) {
-                if (!name.startsWith(':') || name === '::app') continue;
+                if (!name.startsWith(':') || name === 'app') continue;
                 this.#applySingleAttributeOption(name);
             }
             if (!this.#rendered) {
@@ -922,7 +971,7 @@ export default class App extends HTMLElement {
             if (this.#booted === true && !this.#attrObserver) {
                 this.#attrObserver = new MutationObserver(mutations => {
                     for (let m of mutations) {
-                        if (m.type === 'attributes' && m.attributeName && m.attributeName.startsWith(':') && m.attributeName !== '::app')
+                        if (m.type === 'attributes' && m.attributeName && m.attributeName.startsWith(':') && m.attributeName !== 'app')
                             this.#applySingleAttributeOption(m.attributeName);
                     }
                 });

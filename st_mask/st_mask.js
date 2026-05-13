@@ -103,7 +103,11 @@ class st_mask {
         $this.#default_filler = param.default_filler ?? $this.#default_filler;
         $this.#placeholder = param.placeholder ?? $this.#placeholder;
 
-        document.querySelectorAll(param.selector).forEach(input => {
+        let elements = param.inputs
+            ? (param.inputs instanceof Element ? [param.inputs] : Array.from(param.inputs))
+            : Array.from(document.querySelectorAll(param.selector));
+
+        elements.forEach(input => {
 
             let input_object = {
                 input: input,
@@ -145,6 +149,11 @@ class st_mask {
             });
 
             $this.#inputs.push(input_object);
+
+            input.closest('form')?.addEventListener('reset', () => {
+                input_object.value = [];
+                $this.#refresh_mask(input_object);
+            });
         });
 
         if (param.masks)
