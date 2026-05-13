@@ -824,14 +824,72 @@ App.create({
 this.clone({ label: 'Клон', count: 999 });
 ```
 
-### `this.dispatch(eventName, detail, options?)`
+### `this.unwatch()`
 
-Диспатчит `CustomEvent` на элементе. Возвращает объект события.
+Снимает **все** активные наблюдатели, установленные через `watch()` на данном экземпляре — key-подписки, getter-эффекты и перехваты методов. Перехваченные методы восстанавливаются к своим оригинальным реализациям.
 
 ```js
-let event = this.dispatch('my-event', { value: 42 }, { bubbles: true });
-if (!event.defaultPrevented) {
-    // обработка
+setup() {
+    this.watch('count', (n) => console.log('count:', n));
+    this.watch('user', (n) => console.log('user:', n), { deep: true });
+    this.watch('save()', (args, result) => console.log('saved:', result));
+
+    // ... позже снять сразу все:
+    this.unwatch();
+}
+```
+
+> **Отличие от `unwatch()`, возвращаемой `watch()`:** вызов отдельной функции `unwatch` снимает одну конкретную подписку. `this.unwatch()` снимает сразу все.
+
+### `this.hasWatchers()`
+
+Возвращает `number` — суммарное количество активных наблюдателей (key-подписки + getter-подписки + перехваты методов). Полезно для отладки и условной проверки.
+
+```js
+setup() {
+    this.watch('count', () => {});
+    this.watch('name', () => {});
+    this.watch('save()', () => {});
+
+    console.log(this.hasWatchers()); // 3
+
+    this.unwatch();
+    console.log(this.hasWatchers()); // 0
+}
+```
+
+### `this.watched(source, callback, options?)`
+
+Комбинированный метод «заменить подписку»: сначала снимает все существующие подписки для указанного `source`, затем добавляет новую. Сигнатура и варианты `source` идентичны `watch()`.
+
+Полезен при повторной инициализации — не допускает дублирования наблюдателей:
+
+```js
+// Обычный watch — при повторном вызове добавляет вторую подписку
+this.watch('count', handlerA);
+this.watch('count', handlerB); // теперь оба активны
+
+// watched — автоматически снимает предыдущую перед добавлением
+this.watched('count', handlerA);
+this.watched('count', handlerB); // handlerA снят, активен только handlerB
+```
+
+```js
+// Поддерживаются все варианты source:
+this.watched('prop', callback);
+this.watched('obj.nested', callback, { deep: true });
+this.watched(() => this.a + this.b, callback);
+this.watched('method()', (args, result) => { ... });
+```
+
+### `this.dispatchEvent(event, detail?, options?)`
+
+Переопределённый `dispatchEvent`. Если первый аргумент — строка, создаёт и диспатчит `CustomEvent`. Если передан готовый объект `Event` — диспатчит его напрямую. Возвращает `boolean` (результат нативного `dispatchEvent`).
+
+```js
+let ok = this.dispatchEvent('my-event', { value: 42 }, { bubbles: true });
+if (ok) {
+    // событие не было отменено через preventDefault()
 }
 ```
 
@@ -1088,7 +1146,10 @@ this.watch('method()', (args, result, unwatch) => { ... });
 this.applyTemplate(htmlString);  // переключить шаблон
 this.applyTemplate();            // вернуться к базовому
 
-this.dispatch('my-event', detail, { bubbles: true });
+this.dispatchEvent('my-event', detail, { bubbles: true });
 this.clone({ ...overrides });
+this.unwatch();                  // снять все подписки
+this.hasWatchers();              // число активных наблюдателей
+this.watched('prop', callback);  // заменить подписку (без дублей)
 this.attrs.get('name');
 ```
