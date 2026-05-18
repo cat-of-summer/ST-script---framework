@@ -42,6 +42,7 @@ class App extends HTMLElement {
     #triggeredKeys = new Set();
     #pendingFlush = false;
     #methodWrappers = new Map();
+    #renderToken = 0;
 
     constructor() {
         super();
@@ -87,8 +88,8 @@ class App extends HTMLElement {
     }
 
     addEventListener(type, listener, options) {
-        if (type === 'setup' && this.#rendered) {
-            queueMicrotask(() => listener(new CustomEvent('setup')));
+        if ((type === 'setup' || type === 'rendered') && this.#rendered) {
+            queueMicrotask(() => listener(new CustomEvent(type)));
             return;
         }
         super.addEventListener(type, listener, options);
@@ -114,8 +115,28 @@ class App extends HTMLElement {
             Array.from(fragment.childNodes).forEach(child => this.#processNode(child));
             this.#mount(fragment);
         }
-        this.#rendered = true;
-        this.dispatchEvent('rendered');
+        let token = ++this.#renderToken;
+        new Promise(resolve => {
+            let timeout = null;
+            let observer;
+            let setMyTimeout = () => {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => {
+                    observer.disconnect();
+                    this.#promiseCallback(Array.from(this.children)).then(resolve);
+                }, 0);
+            };
+            observer = new MutationObserver((r) => {
+                if (r.some(rec => rec.type === 'childList'))
+                    setMyTimeout();
+            });
+            observer.observe(this, { childList: true });
+            setMyTimeout();
+        }).then(() => {
+            if (token !== this.#renderToken) return;
+            this.#rendered = true;
+            this.dispatchEvent('rendered');
+        });
     }
 
     #mount(node) {
@@ -952,22 +973,22 @@ class App extends HTMLElement {
                 if (!name.startsWith(':') || name === 'app') continue;
                 this.#applySingleAttributeOption(name);
             }
-            if (!this.#rendered) {
-                if (this.childNodes.length > 0) {
-                    let hasNonEmptyContent = Array.from(this.childNodes).some(node =>
-                        node.nodeType === Node.ELEMENT_NODE ||
-                        (node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== '')
-                    );
-                    if (hasNonEmptyContent) {
-                        if (this.#template)
-                            this.applyTemplate(this.innerHTML);
-                        else
-                            this.#template = this.innerHTML;
-                    }
+            let appliedInline = false;
+            if (this.childNodes.length > 0) {
+                let hasNonEmptyContent = Array.from(this.childNodes).some(node =>
+                    node.nodeType === Node.ELEMENT_NODE ||
+                    (node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== '')
+                );
+                if (hasNonEmptyContent) {
+                    if (this.#template) {
+                        this.applyTemplate(this.innerHTML);
+                        appliedInline = true;
+                    } else
+                        this.#template = this.innerHTML;
                 }
-                if (!this.#rendered)
-                    this.applyTemplate();
             }
+            if (!appliedInline)
+                this.applyTemplate();
             if (this.#booted === true && !this.#attrObserver) {
                 this.#attrObserver = new MutationObserver(mutations => {
                     for (let m of mutations) {
