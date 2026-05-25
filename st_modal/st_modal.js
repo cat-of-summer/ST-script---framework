@@ -148,6 +148,7 @@ class st_modal {
             justifyContent: loc.includes('left') ? 'flex-start' : loc.includes('right') ? 'flex-end' : 'center',
             zIndex: ++this.#params.zIndex,
             pointerEvents: 'all',
+            transition: 'inherit'
         });
 
         this.modal.append(this.scroll_area);
