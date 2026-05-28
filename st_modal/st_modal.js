@@ -3,7 +3,7 @@ class st_modal {
 
     modal;
     overlay;
-    scroll_area;
+    area;
     container;
     content;
 
@@ -87,7 +87,7 @@ class st_modal {
         
         this.before_init(this.#params);
 
-        this.modal = document.createElement('modal');
+        this.modal = document.createElement('st-modal');
         this.modal[st_modal.#instance] = this;
 
         Object.assign(this.modal.style, {
@@ -112,7 +112,7 @@ class st_modal {
         }
 
         if (this.#params.overlay) {
-            this.overlay = document.createElement('overlay');
+            this.overlay = document.createElement('st-modal-overlay');
             this.overlay[st_modal.#instance] = this;
 
             Object.assign(this.overlay.style, {
@@ -132,10 +132,10 @@ class st_modal {
 
         let loc = (this.#params.location || '').toLowerCase().split(/\s+/);
 
-        this.scroll_area = document.createElement('scroll-area');
-        this.scroll_area[st_modal.#instance] = this;
+        this.area = document.createElement('st-modal-area');
+        this.area[st_modal.#instance] = this;
 
-        Object.assign(this.scroll_area.style, {
+        Object.assign(this.area.style, {
             position: 'absolute',
             top: '0',
             left: '0',
@@ -150,14 +150,14 @@ class st_modal {
             pointerEvents: 'all',
         });
 
-        this.modal.append(this.scroll_area);
+        this.modal.append(this.area);
 
         if (this.#params.close_by_overlay)
-            this.scroll_area.addEventListener('click', (e) => {
+            this.area.addEventListener('click', (e) => {
                 if (!this.container.contains(e.target)) this.hide(e);
             });
 
-        this.container = document.createElement('container');
+        this.container = document.createElement('st-modal-container');
         this.container[st_modal.#instance] = this;
 
         Object.assign(this.container.style, {
@@ -175,7 +175,7 @@ class st_modal {
             marginRight:  loc.includes('right')  ? '0' : 'auto',
         });
 
-        this.scroll_area.append(this.container);
+        this.area.append(this.container);
 
         try {
             this.content = st_modal.#find_element(this.#params.content) ??
