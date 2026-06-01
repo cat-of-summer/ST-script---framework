@@ -41,12 +41,55 @@ jobs:
           set -euo pipefail
           eval "$BUILD_COMMAND"
 
+      - name: Flatten release asset names
+        id: stage
+        if: ${{ env.RELEASE_FILES != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          out=".release-staging"
+          rm -rf "$out"
+          mkdir -p "$out"
+
+          set -f
+          # shellcheck disable=SC2206
+          patterns=( ${RELEASE_FILES//,/ } )
+          set +f
+
+          staged=()
+          for pattern in "${patterns[@]}"; do
+            base="${pattern%%[*?[{]*}"
+            eval "matches=( $pattern )"
+            for f in "${matches[@]}"; do
+              [ -f "$f" ] || continue
+              rel="${f#"$base"}"
+              if [ -z "$rel" ] || [ "$rel" = "$f" ]; then
+                rel="$(basename "$f")"
+              fi
+              flat="${rel//\//__}"
+              cp "$f" "$out/$flat"
+              staged+=("$out/$flat")
+            done
+          done
+          if [ ${#staged[@]} -eq 0 ]; then
+            echo "No files matched RELEASE_FILES: $RELEASE_FILES" >&2
+            exit 1
+          fi
+          printf 'Staged %s file(s):\n' "${#staged[@]}"
+          printf '  %s\n' "${staged[@]}"
+          {
+            echo "files<<EOF"
+            printf '%s\n' "${staged[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           generate_release_notes: true
-          files: ${{ vars.RELEASE_FILES }}
+          files: ${{ steps.stage.outputs.files }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
