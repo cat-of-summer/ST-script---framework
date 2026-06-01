@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>st-script — ESM + IIFE build demo</title>
+
+  <!-- IIFE / global builds (plain CDN <script defer>) -->
+  <script defer src="../dist/st_system.min.js"></script>
+  <script defer src="../dist/st_modal.min.js"></script>
+  <!-- Web Component: registers <st-app> on load -->
+  <script defer src="../dist/st_app.min.js"></script>
+
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; }
+    code { background: #f3f3f3; padding: 1px 5px; border-radius: 4px; }
+    .ok { color: #137333; } .bad { color: #c5221f; }
+    li { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <h1>st-script build demo</h1>
+  <p>Open the console; this page checks that both build flavours load from <code>dist/</code>.</p>
+
+  <h2>IIFE / global (script defer)</h2>
+  <ul id="iife"></ul>
+
+  <h2>ESM (script type=module)</h2>
+  <ul id="esm"></ul>
+
+  <h2>Web Component <code>&lt;st-app&gt;</code></h2>
+  <st-app><span>If st_app loaded, this stays in a live custom element.</span></st-app>
+
+  <!-- Verify the global/IIFE builds after defer scripts run -->
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const out = document.getElementById('iife');
+      const check = (name, ok) => {
+        const li = document.createElement('li');
+        li.className = ok ? 'ok' : 'bad';
+        li.textContent = `${ok ? '✓' : '✗'} window.${name} = ${ok ? 'class' : 'missing'}`;
+        out.appendChild(li);
+      };
+      check('st_system', typeof window.st_system === 'function');
+      check('st_modal', typeof window.st_modal === 'function');
+      check('st_app (customElements)', !!customElements.get('st-app'));
+    });
+  </script>
+
+  <!-- Verify the ESM builds -->
+  <script type="module">
+    const out = document.getElementById('esm');
+    const add = (txt, ok) => {
+      const li = document.createElement('li');
+      li.className = ok ? 'ok' : 'bad';
+      li.textContent = `${ok ? '✓' : '✗'} ${txt}`;
+      out.appendChild(li);
+    };
+    try {
+      const { default: st_modal } = await import('../dist/st_modal.esm.min.js');
+      add(`import st_modal → ${typeof st_modal}`, typeof st_modal === 'function');
+
+      const mod = await import('../dist/index.esm.min.js');
+      add(`aggregate barrel exports: ${Object.keys(mod).join(', ')}`, Object.keys(mod).length > 0);
+    } catch (e) {
+      add(`ESM import failed: ${e.message}`, false);
+    }
+  </script>
+</body>
+</html>

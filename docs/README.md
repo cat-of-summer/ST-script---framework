@@ -3,47 +3,34 @@
 
 ## Папки
 
-- [AjaxCardsLoaderXHR](AjaxCardsLoaderXHR/)
-- [examples](examples/)
-- [st_accordion](st_accordion/)
-- [st_app](st_app/)
-- [st_button_widget](st_button_widget/)
-- [st_cookie](st_cookie/)
-- [st_links_widget](st_links_widget/)
-- [st_mask](st_mask/)
-- [st_modal](st_modal/)
-- [st_observer](st_observer/)
-- [st_select](st_select/)
-- [st_system](st_system/)
-- [st_typograf](st_typograf/)
-- [st_uploader](st_uploader/)
-- [st_validator](st_validator/)
-- [st_widget](st_widget/)
+- [src](src/)
 
 <!-- DOCGEN:END -->
 
-## Как подключить?
+## Документация
 
-Базовый URL для подключения классов через CDN (jsDelivr). Не требует установки --- достаточно добавить `<script>` в HTML.
+Документация по каждому классу лежит рядом с его исходником — в
+[`src/<модуль>/index.js.md`](src/). Сборка и способы подключения (npm / CDN,
+ESM / IIFE) описаны в корневом [`README.md`](../README.md) репозитория.
 
-## Формат URL
+## Подключение (кратко)
 
-```
-https://cdn.jsdelivr.net/gh/cat-of-summer/js_classes/{module}/{file}.js
-```
-
-## Примеры
+Пакет: **`@cat-of-summer/st-script`**. Сборка кладёт в `dist/` две версии каждого
+модуля — ESM (`*.esm.min.js`) и IIFE/глобал (`*.min.js`).
 
 ```html
-<!-- Минифицированные версии (рекомендуется для прода) -->
-<script src="https://cdn.jsdelivr.net/gh/cat-of-summer/js_classes/st_modal/st_modal.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/cat-of-summer/js_classes/st_cookie/st_cookie.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/cat-of-summer/js_classes/st_validator/st_validator.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/cat-of-summer/js_classes/st_mask/st_mask.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/cat-of-summer/js_classes/AjaxCardsLoaderXHR/AjaxCardsLoaderXHR.min.js"></script>
+<!-- CDN, обычный скрипт (глобал window.st_modal) -->
+<script defer src="https://cdn.jsdelivr.net/npm/@cat-of-summer/st-script@0.1.0/dist/st_modal.min.js"></script>
 
-<!-- Исходные (для разработки) -->
-<script src="https://cdn.jsdelivr.net/gh/cat-of-summer/js_classes/st_modal/st_modal.js"></script>
+<!-- CDN, ES-модуль -->
+<script type="module">
+  import st_modal from 'https://cdn.jsdelivr.net/npm/@cat-of-summer/st-script@0.1.0/dist/st_modal.esm.min.js';
+</script>
 ```
 
-Доступные модули: `AjaxCardsLoaderXHR`, `st_accordion`, `st_app`, `st_button_widget`, `st_cookie`, `st_links_widget`, `st_mask`, `st_modal`, `st_observer`, `st_select`, `st_system`, `st_uploader`, `st_validator`, `st_widget`.
+```js
+// npm
+import st_modal from '@cat-of-summer/st-script/st_modal';
+```
+
+Полный список модулей и примеры — в корневом `README.md` и в `docs/src/`.

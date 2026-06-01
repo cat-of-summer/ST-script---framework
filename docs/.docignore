@@ -164,10 +164,11 @@
 *.min.js
 *.min.css
 
-# Lock files
+# Lock files & metadata
 .dockerignore
 .gitignore
 .gitattributes
+package.json
 package-lock.json
 yarn.lock
 composer.lock
@@ -181,17 +182,14 @@ vendor/
 venv/
 dist/
 build/
+scripts/
 .git/
 .github/
 docs/
+examples/
 __pycache__/
 .cache/
 .tmp/
 .vscode/
 .idea/
 bower_components/
-
-*.html
-*.min.js
-
-!examples/

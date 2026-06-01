@@ -1,0 +1,52 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  get-branch:
+    runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.find-branch.outputs.branch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: find-branch
+        run: |
+          BRANCH=$(git branch -r --contains ${{ github.sha }} | grep -v HEAD | head -1 | sed 's/.*origin\///')
+          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
+
+  release:
+    needs: get-branch
+    runs-on: ubuntu-latest
+
+    environment: ${{ needs.get-branch.outputs.branch }}
+
+    env:
+      BUILD_COMMAND: ${{ vars.BUILD_COMMAND }}
+      RELEASE_FILES: ${{ vars.RELEASE_FILES }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        if: ${{ env.BUILD_COMMAND != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$BUILD_COMMAND"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          generate_notes: true
+          files: ${{ vars.RELEASE_FILES }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
