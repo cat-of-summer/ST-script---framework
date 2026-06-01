@@ -1,5 +1,5 @@
 <!-- DOCGEN:START -->
-# ST-script
+# ST-script---framework
 
 ## Папки
 
