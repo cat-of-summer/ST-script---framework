@@ -1,4 +1,4 @@
-# st-script
+# ST-script
 
 Standalone JavaScript classes / components, authored as ES modules and shipped in
 two flavours per module:
