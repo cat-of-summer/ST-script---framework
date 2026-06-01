@@ -1,5 +1,5 @@
 <!-- DOCGEN:START -->
-# js_classes
+# ST-script
 
 ## Папки
 
