@@ -1,5 +1,5 @@
 <!-- DOCGEN:START -->
-# st_uploader
+# uploader
 
 ## Файлы
 
