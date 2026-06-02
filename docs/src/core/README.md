@@ -1,5 +1,5 @@
 <!-- DOCGEN:START -->
-# st_system
+# core
 
 ## Файлы
 
