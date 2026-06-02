@@ -55,6 +55,7 @@ async function buildAll() {
       bundle: true,
       format: 'esm',
       minify: true,
+      legalComments: 'none',
       logLevel: 'warning',
     });
 
@@ -68,6 +69,7 @@ async function buildAll() {
       format: 'iife',
       globalName: g,
       minify: true,
+      legalComments: 'none',
       logLevel: 'warning',
       footer: {
         js: `if(typeof ${g}!=="undefined"&&${g}&&${g}.default)globalThis.${g}=${g}.default;`,
