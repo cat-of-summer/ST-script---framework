@@ -1,5 +1,5 @@
 <!-- DOCGEN:START -->
-# st_app
+# app
 
 ## Папки
 

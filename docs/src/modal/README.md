@@ -1,5 +1,5 @@
 <!-- DOCGEN:START -->
-# st_modal
+# modal
 
 ## Файлы
 
