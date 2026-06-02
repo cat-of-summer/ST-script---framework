@@ -94,9 +94,9 @@
         }
     }
 
-    let object_1_2 = st_system.object_merge(object_1, object_2);
-    let object_2_1 = st_system.object_merge(object_2, object_1);
-    let object_1_2_3 = st_system.object_merge(object_1, object_2, object_3);
+    let object_1_2 = st_system.merge(object_1, object_2);
+    let object_2_1 = st_system.merge(object_2, object_1);
+    let object_1_2_3 = st_system.merge(object_1, object_2, object_3);
 
     document.querySelectorAll("pre[object='1']").forEach(element => {
         element.textContent = JSON.stringify(object_1, null, 2);

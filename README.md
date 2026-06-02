@@ -12,7 +12,7 @@ two flavours per module:
 | `st_modal`            | `window.st_modal`   | Modal windows.                                   |
 | `st_typograf`         | `window.st_typograf`| Typography fixer.                                |
 | `st_cookie`           | `window.st_cookie`  | Cookie helpers.                                  |
-| `st_system`           | `window.st_system`  | Utilities (`object_merge`, `generate_*`).        |
+| `st_system`           | `window.st_system`  | Utilities (`merge`, `generate_*`).               |
 | `st_observer`         | `window.st_observer`| IntersectionObserver wrapper.                    |
 | `st_accordion`        | `window.st_accordion`| Accordion.                                      |
 | `st_select`           | `window.st_select`  | Custom `<select>`.                               |
