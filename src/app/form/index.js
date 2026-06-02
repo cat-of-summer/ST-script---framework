@@ -1,13 +1,3 @@
-// Form app config object — NOT registered here (no App dependency, so it is
-// never bundled into each app and `st_app` loads once). Register it yourself
-// against an already-loaded App:
-//
-//   import App from '@cat-of-summer/st-script/st_app';
-//   import formConfig from '@cat-of-summer/st-script/st_app/form';
-//   App.create(formConfig);
-//
-// Via CDN: after the script loads, `window.form` is this object —
-//   App.create(window.form);
 export default {
     app: 'form',
 

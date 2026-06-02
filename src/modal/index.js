@@ -1,4 +1,4 @@
-class st_modal {
+export default class Modal {
     static #instance = Symbol();
 
     modal;
@@ -22,7 +22,7 @@ class st_modal {
     }
 
     static find(tag) {
-        return st_modal.#find_element(tag)[st_modal.#instance];
+        return Modal.#find_element(tag)[Modal.#instance];
     }
 
     get state() {return this.#state;}
@@ -32,7 +32,7 @@ class st_modal {
         let content = this.content.cloneNode(true);
         content.id = params.id ?? (content.id || 'modal').replace(/#+$/, '') + (params.suffix ?? '_copy');
 
-        return new st_modal({
+        return new Modal({
             ...this.#params,
             ...this.#methods,
             content,
@@ -87,8 +87,8 @@ class st_modal {
         
         this.before_init(this.#params);
 
-        this.modal = document.createElement('st-modal');
-        this.modal[st_modal.#instance] = this;
+        this.modal = document.createElement('modal');
+        this.modal[Modal.#instance] = this;
 
         Object.assign(this.modal.style, {
             position: 'fixed',
@@ -106,14 +106,14 @@ class st_modal {
         this.modal.setAttribute('state', 'hidden');
 
         try {
-            st_modal.#find_element(this.#params.container).append(this.modal);
+            Modal.#find_element(this.#params.container).append(this.modal);
         } catch {
             throw new Error("Неудачная попытка вставить модальное окно в указанный контейнер");
         }
 
         if (this.#params.overlay) {
-            this.overlay = document.createElement('st-modal-overlay');
-            this.overlay[st_modal.#instance] = this;
+            this.overlay = document.createElement('modal-overlay');
+            this.overlay[Modal.#instance] = this;
 
             Object.assign(this.overlay.style, {
                 position: 'absolute',
@@ -132,8 +132,8 @@ class st_modal {
 
         let loc = (this.#params.location || '').toLowerCase().split(/\s+/);
 
-        this.area = document.createElement('st-modal-area');
-        this.area[st_modal.#instance] = this;
+        this.area = document.createElement('modal-area');
+        this.area[Modal.#instance] = this;
 
         Object.assign(this.area.style, {
             position: 'absolute',
@@ -158,8 +158,8 @@ class st_modal {
                 if (!this.container.contains(e.target)) this.hide(e);
             });
 
-        this.container = document.createElement('st-modal-container');
-        this.container[st_modal.#instance] = this;
+        this.container = document.createElement('modal-container');
+        this.container[Modal.#instance] = this;
 
         Object.assign(this.container.style, {
             position: 'relative',
@@ -179,14 +179,14 @@ class st_modal {
         this.area.append(this.container);
 
         try {
-            this.content = st_modal.#find_element(this.#params.content) ??
+            this.content = Modal.#find_element(this.#params.content) ??
                 (new DOMParser()).parseFromString(this.#params.content, 'text/html').body.firstElementChild;
         } catch {
             throw new Error("Неудачная попытка вставить переданный контент в модальное окно");
         }
 
         this.container.append(this.content);
-        this.content[st_modal.#instance] = this;
+        this.content[Modal.#instance] = this;
         this.content.modal = this;
         this.content.style.transition = 'inherit';
 
@@ -308,5 +308,3 @@ class st_modal {
         this.on_init(this.#params);
     }
 }
-
-export default st_modal;

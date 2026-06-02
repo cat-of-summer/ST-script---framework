@@ -1,12 +1,12 @@
 {
   "name": "@cat-of-summer/st-script",
   "version": "0.1.0",
-  "description": "Standalone JS classes/components (st_modal, st_app, st_typograf, …), shipped as ESM and IIFE/CDN builds.",
+  "description": "Standalone JS classes/components (Modal, App, Typograf  , …), shipped as ESM and IIFE/CDN builds.",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cat-of-summer/js_classes.git"
+    "url": "git+https://github.com/cat-of-summer/ST-script---framework.git"
   },
   "files": [
     "src",

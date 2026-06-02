@@ -1,4 +1,4 @@
-class st_cookie {
+export default class Cookie {
     static set(name, value, params = {}) {
         params = {
             path: '/',
@@ -41,7 +41,7 @@ class st_cookie {
     }
 
     static delete(name, params = {}) {
-        st_cookie.set(name, '', {
+        Cookie.set(name, '', {
             expires: 0,
             ...params
         });
@@ -57,8 +57,8 @@ class st_cookie {
         };
 
         let interval = setInterval(() => {
-            if (st_cookie.get(name) === null) {
-                st_cookie.set(name, params.value, params);
+            if (Cookie.get(name) === null) {
+                Cookie.set(name, params.value, params);
 
                 setTimeout(() => {
                     callback(name);
@@ -126,11 +126,11 @@ class st_cookie {
 
         container.append(params.content);
     
-        st_cookie.callback(params.name, e => {
+        Cookie.callback(params.name, e => {
             ['accept', 'decline'].forEach(action => {
                 container.querySelectorAll(`[action=${action}]`).forEach(t => {
                     t.addEventListener('click', e => {
-                        st_cookie.set(params.name, action == 'accept', params);
+                        Cookie.set(params.name, action == 'accept', params);
                         container.style.display = 'none';
                     });
                 });
@@ -139,5 +139,3 @@ class st_cookie {
         }, {...params, value: null});
     }
 }
-
-export default st_cookie;
