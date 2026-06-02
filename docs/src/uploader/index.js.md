@@ -1,29 +1,32 @@
-# st_uploader.js
+# uploader.js
 
 ## Описание
 
 Компонент загрузки файлов с поддержкой drag & drop, предпросмотром изображений, ограничениями (количество, размер, типы) и поддержкой уже существующих файлов (для редактирования). Структура HTML описывается через атрибуты-маркеры.
 
+CDN-сборка (`<script src="uploader.js">`) выставляет класс как `window.uploader`; ESM-импорт — `import { Uploader } from '@cat-of-summer/st-script'`.
+
 ## Статические методы
 
 | Метод | Описание |
 |---|---|
-| `st_uploader.formatSize(bytes)` | Преобразует байты в читаемую строку (Б, КБ, МБ, ГБ, ТБ) |
+| `Uploader.formatSize(bytes)` | Преобразует байты в читаемую строку (Б, КБ, МБ, ГБ, ТБ) |
+| `Uploader.find(element \| selector)` | Возвращает экземпляр, которому принадлежит контейнер (или `undefined`) |
 
 ## Конструктор
 
 ```js
-new st_uploader(params)
+new Uploader(params)
 ```
 
 ### Основные параметры
 
 | Параметр | Описание |
 |---|---|
-| `target` | CSS-селектор корневого контейнера |
+| `target` | CSS-селектор корневого контейнера (можно несколько) |
 | `input_name` | Имя `<input file>` для передачи файлов в форме |
 | `delete_name` | Имя поля для списка ID удалённых файлов |
-| `entry` | `'*[file-item]'` | CSS-селектор шаблона карточки файла |
+| `entry` | CSS-селектор шаблона карточки файла (по умолчанию `'*[file-item]'`) |
 
 ### callbacks
 
@@ -59,7 +62,7 @@ new st_uploader(params)
 ## Пример
 
 ```js
-new st_uploader({
+new Uploader({
     target: '.upload-wrapper',
     input_name: 'FILES',
     delete_name: 'FILES_TO_DELETE',

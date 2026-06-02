@@ -1,3 +1,5 @@
+import { element } from '../_traits/hasInstanceSymbol.js';
+
 export default class st_typograf {
     static #marker    = Symbol();
     static #originals = new WeakMap();
@@ -27,18 +29,8 @@ export default class st_typograf {
     static #digit_regex = /(\d) +(?=\S)/g;
     static #dash_regex  = / +(?=[—–] )/g;
 
-    static #find_element(param) {
-        try {
-            return param instanceof Element
-                ? param
-                : document.querySelector(param);
-        } catch {
-            return undefined;
-        }
-    }
-
     static preventWidows(entity) {
-        const root = st_typograf.#find_element(entity);
+        const root = element(entity);
         if (!root) return;
         if (root[st_typograf.#marker]) return;
 

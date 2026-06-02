@@ -11,5 +11,5 @@ export { default as st_observer } from './st_observer/index.js';
 export { default as st_select } from './st_select/index.js';
 export { default as Core } from './core/index.js';
 export { default as st_typograf } from './st_typograf/index.js';
-export { default as st_uploader } from './st_uploader/index.js';
+export { default as Uploader } from './uploader/index.js';
 export { default as st_validator } from './st_validator/index.js';

@@ -1,3 +1,5 @@
+import { elements } from '../_traits/hasInstanceSymbol.js';
+
 class st_select {
     constructor (params = {}) {
         
@@ -87,20 +89,6 @@ class st_select {
 
 class n_st_select {
 
-    static #find_elements(param) {
-        if (param instanceof Element) return [param];
-
-        if (param instanceof NodeList || param instanceof HTMLCollection) return param;
-        
-        try {
-            let result = document.querySelectorAll(param);
-            if (result.length === 0) throw new Error();
-            return result;
-        } catch {
-            return [document.body.appendChild((new DOMParser()).parseFromString(param, 'text/html').body.firstElementChild)];
-        }
-    }
-
     constructor (params) {
         params = {
             // target: `<select></select`,
@@ -109,7 +97,7 @@ class n_st_select {
             ...params
         };
 
-        n_st_select.#find_elements(params.target).forEach(select => {
+        elements(params.target).forEach(select => {
             let select_container = document.createElement('container');
             Object.assign(select_container, {
                 display: 'inline-block',

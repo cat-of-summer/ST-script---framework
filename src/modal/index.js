@@ -1,6 +1,6 @@
-export default class Modal {
-    static #instance = Symbol();
+import { element, find, own } from '../_traits/hasInstanceSymbol.js';
 
+export default class Modal {
     modal;
     overlay;
     area;
@@ -11,19 +11,7 @@ export default class Modal {
     #methods = {};
     #state = 'hidden';
 
-    static #find_element(param) {
-        try {
-            return param instanceof Element
-                ? param
-                : document.querySelector(param);
-        } catch {
-            return undefined;
-        }
-    }
-
-    static find(tag) {
-        return Modal.#find_element(tag)[Modal.#instance];
-    }
+    static find = find;
 
     get state() {return this.#state;}
     get params() {return this.#params;}
@@ -88,7 +76,7 @@ export default class Modal {
         this.before_init(this.#params);
 
         this.modal = document.createElement('modal');
-        this.modal[Modal.#instance] = this;
+        own(this.modal, this);
 
         Object.assign(this.modal.style, {
             position: 'fixed',
@@ -106,14 +94,14 @@ export default class Modal {
         this.modal.setAttribute('state', 'hidden');
 
         try {
-            Modal.#find_element(this.#params.container).append(this.modal);
+            element(this.#params.container).append(this.modal);
         } catch {
             throw new Error("Неудачная попытка вставить модальное окно в указанный контейнер");
         }
 
         if (this.#params.overlay) {
             this.overlay = document.createElement('modal-overlay');
-            this.overlay[Modal.#instance] = this;
+            own(this.overlay, this);
 
             Object.assign(this.overlay.style, {
                 position: 'absolute',
@@ -133,7 +121,7 @@ export default class Modal {
         let loc = (this.#params.location || '').toLowerCase().split(/\s+/);
 
         this.area = document.createElement('modal-area');
-        this.area[Modal.#instance] = this;
+        own(this.area, this);
 
         Object.assign(this.area.style, {
             position: 'absolute',
@@ -159,7 +147,7 @@ export default class Modal {
             });
 
         this.container = document.createElement('modal-container');
-        this.container[Modal.#instance] = this;
+        own(this.container, this);
 
         Object.assign(this.container.style, {
             position: 'relative',
@@ -179,15 +167,14 @@ export default class Modal {
         this.area.append(this.container);
 
         try {
-            this.content = Modal.#find_element(this.#params.content) ??
+            this.content = element(this.#params.content) ??
                 (new DOMParser()).parseFromString(this.#params.content, 'text/html').body.firstElementChild;
         } catch {
             throw new Error("Неудачная попытка вставить переданный контент в модальное окно");
         }
 
         this.container.append(this.content);
-        this.content[Modal.#instance] = this;
-        this.content.modal = this;
+        own(this.content, this);
         this.content.style.transition = 'inherit';
 
         this.content.querySelectorAll(`[action="close"]`).forEach(close_button => {

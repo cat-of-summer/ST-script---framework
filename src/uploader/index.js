@@ -1,5 +1,7 @@
-class st_uploader {
-    static #instance = Symbol();
+import { find, own } from '../_traits/hasInstanceSymbol.js';
+
+class Uploader {
+    static find = find;
 
     static formatSize(size) {
         const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
@@ -48,10 +50,10 @@ class st_uploader {
         params.delete_name = (params.delete_name ? params.delete_name.replace(/\[\]$/, '')  : input_name + '_to_delete') + (params.limits.files != 1 ? '[]' : '');
 
         document.querySelectorAll(params.target).forEach(target => {
-            if (target[st_uploader.#instance])
+            if (find(target))
                 throw new Error("Already inited");
 
-            target[st_uploader.#instance] = this;
+            own(target, this);
 
             for (let [key, value] of Object.entries(params))
                 if (typeof value == "function")
@@ -72,6 +74,13 @@ class st_uploader {
 
                 return false;
             }
+
+            const createFileInput = () => Object.assign(document.createElement('input'), {
+                type: 'file',
+                name: params.input_name,
+                multiple: params.limits.files != 1,
+                hidden: true,
+            });
 
             let files_list = target.querySelector('*[files-list]');
             let entry_template = null;
@@ -102,7 +111,7 @@ class st_uploader {
 
                 filename.forEach(f => f.textContent = file.name);
                 fileweight.forEach(f => {
-                    f.textContent = st_uploader.formatSize(file.size);
+                    f.textContent = Uploader.formatSize(file.size);
                     f.setAttribute('size', file.size);
                 });
 
@@ -116,12 +125,7 @@ class st_uploader {
                     target.on_file_delete(file)
                 }));
 
-                let hidden = Object.assign(document.createElement('input'), {
-                    type: 'file',
-                    name: params.input_name.replace(/\[\]$/, '') + (params.limits.files != 1 ? '[]' : ''),
-                    multiple: params.limits.files != 1,
-                    hidden: true,
-                });
+                let hidden = createFileInput();
 
                 let dt = new DataTransfer();
                 dt.items.add(file);
@@ -134,18 +138,19 @@ class st_uploader {
 
             const createDeleteEntry = (entry) => {
                 let input = entry.querySelector(`input[name^="${input_name}"]`) ?? entry.querySelector(`input[type='hidden'][value]`) ?? entry.querySelector(`input[value]`);
-                let preview = entry.querySelectorAll('img[preview]');
-                let filename = entry.querySelectorAll('*[filename]');
-                let fileweight = entry.querySelectorAll('*[fileweight]');
                 let delete_button = entry.querySelectorAll('*[delete-button]');
 
                 if (input) {
+                    let preview = entry.querySelector('img[preview]');
+                    let filename = entry.querySelector('*[filename]');
+                    let fileweight = entry.querySelector('*[fileweight]');
+
                     let file = {
                         _id: crypto.randomUUID(),
                         preview: preview?.src || '',
                         value: input.value,
-                        name: filename?.innerText || '',
-                        size: parseFloat(fileweight?.innerText || 0)
+                        name: filename?.textContent || '',
+                        size: parseFloat(fileweight?.getAttribute('size') ?? fileweight?.textContent ?? 0) || 0,
                     };
 
                     target.files.set(file._id, file);
@@ -166,9 +171,9 @@ class st_uploader {
 
                         entry.remove();
                     }));
-                    
+
                     input.remove();
-                } else 
+                } else
                     entry.remove();
 
                 return entry;
@@ -179,10 +184,10 @@ class st_uploader {
                     return handleException(file, `Максимум файлов: ${params.limits.files}`, 0);
 
                 if (params.limits.file_size > 0 && file.size > params.limits.file_size)
-                    return handleException(file, `Файл "${file.name}" слишком большой! Максимум ${st_uploader.formatSize(params.limits.file_size)}.`, 1);
-    
+                    return handleException(file, `Файл "${file.name}" слишком большой! Максимум ${Uploader.formatSize(params.limits.file_size)}.`, 1);
+
                 if (params.limits.total_size > 0 && target.total_size + file.size > params.limits.total_size)
-                    return handleException(file, `Превышен общий лимит! Максимальная сумма всех файлов ${st_uploader.formatSize(params.limits.total_size)}.`, 2);
+                    return handleException(file, `Превышен общий лимит! Максимальная сумма всех файлов ${Uploader.formatSize(params.limits.total_size)}.`, 2);
 
                 if (params.limits.mimes.length > 0) {
                     let type = file.type.trim();
@@ -195,7 +200,7 @@ class st_uploader {
                             continue;
                         }
 
-                        if (/^[\^$.*+?()[\]{}|\\]/.test(condition) || /[\\^$.*+?()[\]{}|]/.test(condition)) {
+                        if (/[\\^$.*+?()[\]{}|]/.test(condition)) {
                             try {
                                 let re = new RegExp(condition, 'i');
 
@@ -207,13 +212,13 @@ class st_uploader {
 
                         if (base_type === condition.toLowerCase()) return true;
                     }
-                    
+
                     return handleException(file, `Файл "${file.name}" имеет недопустимый тип: ${base_type}.`, 3);
                 }
-                
+
                 return true;
             }
-            
+
             const handleFiles = (files) => {
                 let file_array = Array.from(files);
 
@@ -233,11 +238,11 @@ class st_uploader {
 
                 target.on_files_add(file_array);
             };
-            
+
             try {
                 let existing = target.querySelectorAll(params.entry);
 
-                if (existing .length > 0) {
+                if (existing.length > 0) {
                     existing.forEach(i => {
                         let temp_node = createDeleteEntry(i);
 
@@ -276,12 +281,7 @@ class st_uploader {
             });
 
             target.querySelectorAll('*[add-button]').forEach(b => b.addEventListener('click', () => {
-                let hidden = Object.assign(document.createElement('input'), {
-                    type: 'file',
-                    name: params.input_name.replace(/\[\]$/, '') + (params.limits.files != 1 ? '[]' : ''),
-                    multiple: params.limits.files != 1,
-                    hidden: true,
-                });
+                let hidden = createFileInput();
 
                 hidden.addEventListener('change', () => {
                     handleFiles(hidden.files);
@@ -296,4 +296,4 @@ class st_uploader {
     }
 }
 
-export default st_uploader;
+export default Uploader;

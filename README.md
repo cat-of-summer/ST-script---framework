@@ -17,7 +17,7 @@ two flavours per module:
 | `st_accordion`        | `window.st_accordion`| Accordion.                                      |
 | `st_select`           | `window.st_select`  | Custom `<select>`.                               |
 | `st_mask`             | `window.st_mask`    | Input masks.                                      |
-| `st_uploader`         | `window.st_uploader`| File uploader.                                   |
+| `uploader`            | `window.uploader`   | File uploader.                                   |
 | `st_validator`        | `window.st_validator`| Form/field validation.                          |
 | `st_button_widget`    | `window.st_button_widget`| Floating button widget.                     |
 | `st_links_widget`     | `window.st_links_widget`| Links widget.                                |
