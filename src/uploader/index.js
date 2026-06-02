@@ -1,6 +1,6 @@
 import { find, own } from '../_traits/hasInstanceSymbol.js';
 
-class Uploader {
+export default class Uploader {
     static find = find;
 
     static formatSize(size) {
@@ -295,5 +295,3 @@ class Uploader {
         });
     }
 }
-
-export default Uploader;

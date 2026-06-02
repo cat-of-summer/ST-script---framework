@@ -1,6 +1,5 @@
 export default class Core {
-
-
+    
     static merge(...objects) {
         const plain = v => v !== null && typeof v === 'object' && !Array.isArray(v)
             && (Object.getPrototypeOf(v) ?? Object.prototype) === Object.prototype;
