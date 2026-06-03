@@ -5,6 +5,10 @@
 
 - [src](src/)
 
+## Файлы
+
+- [.npmrc](.npmrc.md)
+
 <!-- DOCGEN:END -->
 
 ## Документация
