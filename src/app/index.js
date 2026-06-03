@@ -1,6 +1,4 @@
 export default class App extends HTMLElement {
-    static {customElements.define('st-app', this)}
-
     static #boolean_attributes = new Set(['disabled', 'checked', 'readonly', 'required', 'selected', 'hidden', 'open', 'autofocus']);
     static #apps = new Map();
     static #instances = new Set();
@@ -1038,4 +1036,5 @@ export default class App extends HTMLElement {
         ](name, value != value_1 ? value_1 : value_2);
     }
 
+    static { customElements.define('st-app', this); }
 }

@@ -1,3 +1,5 @@
+import Core from '../../core/index.js';
+
 export default {
     app: 'form',
 
@@ -145,11 +147,12 @@ export default {
         return fields.length ? fields[0] : null;
     },
     appendField(name, value, options = {}) {
+        const { tag = 'input', ...rest } = options;
         let field = this.field(name);
 
         if (field) {
             Object.assign(field, {
-                ...options,
+                ...rest,
 
                 value: value
             });
@@ -157,12 +160,12 @@ export default {
             return;
         }
 
-        field = document.createElement('input');
+        field = document.createElement(tag);
 
         Object.assign(field, {
             type: 'hidden',
 
-            ...options,
+            ...rest,
 
             name: name,
             value: value
@@ -323,81 +326,32 @@ export default {
             url:     self.action || form.getAttribute('action') || window.location.href,
             method:  self.method || form.getAttribute('method') || 'GET',
             headers: self.headers || {},
+            data:    new FormData(form),
         };
 
         self.dispatchEvent('form:before_send', params, { bubbles: true });
 
-        let url    = params.url;
-        let method = (params.method || 'GET').toUpperCase();
-        let body   = new FormData(form);
+        let redirected = false;
 
-        if (method === 'GET') {
-            const query = new URLSearchParams(body).toString();
-            if (query) url += (/\?.+=/.test(url) ? '&' : '?') + query;
-            body = null;
-        }
-
-        let has_error = false;
-
-        const handle_error = (err) => {
-            if (has_error) return;
-            has_error = true;
-
-            const payload = err instanceof XMLHttpRequest
-                ? { status: err.status, status_text: err.statusText, response: err.responseText, request: err }
-                : { status: undefined, status_text: '', response: err };
-
-            self.dispatchEvent('form:failed', payload, { bubbles: true });
-        };
-
-        const request = new XMLHttpRequest();
-
-        request.onreadystatechange = () => {
-            if (request.readyState !== 4) return;
-
-            let data;
-
-            if (request.status >= 200 && request.status < 300) {
-                const response_type = request.getResponseHeader('Content-Type') || '';
-
-                if (response_type.includes('/json'))
-                    try { data = JSON.parse(request.responseText); } catch (e) { data = request.responseText; }
-                else if (response_type.includes('/xml'))
-                    data = (new DOMParser()).parseFromString(request.responseText, 'application/xml');
-                else if (response_type.includes('/html'))
-                    data = (new DOMParser()).parseFromString(request.responseText, 'text/html');
-                else
-                    data = request.responseText;
-
+        Core.fetch(params)
+            .onSend(({ detail }) => {
+                self.dispatchEvent('form:send', { detail }, { bubbles: true });
+            })
+            .onSuccess(({ data, request }) => {
                 if (data && typeof data === 'object' && data.redirect) {
+                    redirected = true;
                     const ev = self.dispatchEvent('form:redirect', { url: data.redirect, data, request }, { bubbles: true });
                     self.dispatchEvent('form:complete', { data, request }, { bubbles: true });
                     if (ev) window.location.href = data.redirect;
                     return;
                 }
-
                 self.dispatchEvent('form:success', { data, request }, { bubbles: true });
-            } else {
-                handle_error(request);
-            }
-
-            self.dispatchEvent('form:complete', { data, request }, { bubbles: true });
-        };
-
-        request.onerror   = () => handle_error(request);
-        request.ontimeout = () => handle_error(request);
-
-        request.open(method, url, true);
-
-        for (const name in params.headers) {
-            if (!Object.prototype.hasOwnProperty.call(params.headers, name)) continue;
-            try { request.setRequestHeader(name, params.headers[name]); } catch (e) {}
-        }
-
-        request.send(body);
-
-        self.dispatchEvent('form:send', { detail: params }, { bubbles: true });
-
-        return request;
+            })
+            .onFailed(payload => {
+                self.dispatchEvent('form:failed', payload, { bubbles: true });
+            })
+            .onComplete(({ data, request }) => {
+                if (!redirected) self.dispatchEvent('form:complete', { data, request }, { bubbles: true });
+            });
     }
 };
