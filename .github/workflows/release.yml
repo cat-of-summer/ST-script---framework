@@ -28,6 +28,9 @@ jobs:
 
     environment: ${{ needs.get-branch.outputs.branch }}
 
+    outputs:
+      publish_to_npm: ${{ vars.PUBLISH_TO_NPM }}
+
     env:
       BUILD_COMMAND: ${{ vars.BUILD_COMMAND }}
       RELEASE_FILES: ${{ vars.RELEASE_FILES }}
@@ -96,8 +99,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   npm-publish:
-    needs: get-branch
-    if: ${{ vars.PUBLISH_TO_NPM == 'true' }}
+    needs: [get-branch, release]
+    if: ${{ needs.release.outputs.publish_to_npm == 'true' }}
     runs-on: ubuntu-latest
 
     environment: ${{ needs.get-branch.outputs.branch }}
