@@ -125,4 +125,19 @@ jobs:
       - name: Override npm auth for publish
         run: sed -i 's|//npm.pkg.github.com/:_authToken=.*|//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}|' .npmrc
 
+      - name: Set version from tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          if [[ ! "$TAG" =~ ^v([0-9]+(\.[0-9]+)*)$ ]]; then
+            echo "::error::Tag '$TAG' is not a version tag (expected v#, v#.#, v#.#.#)." >&2
+            exit 1
+          fi
+          NUM="${BASH_REMATCH[1]}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$NUM"
+          VERSION="${MAJOR:-0}.${MINOR:-0}.${PATCH:-0}"
+          echo "Tag $TAG -> package version $VERSION"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
       - run: npm publish
