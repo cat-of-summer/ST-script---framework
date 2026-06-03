@@ -123,6 +123,6 @@ jobs:
           eval "$BUILD_COMMAND"
 
       - name: Override npm auth for publish
-        run: npm config set //npm.pkg.github.com/:_authToken ${{ secrets.GITHUB_TOKEN }}
+        run: sed -i 's|//npm.pkg.github.com/:_authToken=.*|//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}|' .npmrc
 
       - run: npm publish
