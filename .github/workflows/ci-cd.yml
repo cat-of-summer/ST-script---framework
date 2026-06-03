@@ -1,0 +1,606 @@
+name: ci/cd
+
+on:
+  push:
+    branches: ['**']
+  pull_request: {}
+  workflow_dispatch:
+    inputs:
+      commits:
+        description: 'Comma-separated commits to deploy'
+        required: false
+        type: string
+        default: ''
+      deploy_mirror:
+        description: 'Delete from server files that exist in candidate set but are missing at REF_COMMIT (true/false)'
+        required: false
+        type: string
+        default: 'true'
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    environment: ${{ github.ref_name }}
+
+    env:
+      BUILD_COMMAND: ${{ vars.BUILD_COMMAND }}
+      CI_COMMAND: ${{ vars.CI_COMMAND }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        if: ${{ env.BUILD_COMMAND != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$BUILD_COMMAND"
+
+      - name: Run CI command
+        if: ${{ env.CI_COMMAND != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$CI_COMMAND"
+
+      - name: Nothing configured
+        if: ${{ env.BUILD_COMMAND == '' && env.CI_COMMAND == '' }}
+        run: echo "::warning::Neither BUILD_COMMAND nor CI_COMMAND is set for environment '${{ github.ref_name }}'; skipping checks"
+
+  cd:
+    needs: ci
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+
+    environment: ${{ github.ref_name }}
+
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      DEPLOY_LOCAL_DIR: ${{ vars.DEPLOY_LOCAL_DIR || './' }}
+      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+      DEPLOY_MIRROR: ${{ inputs.deploy_mirror || vars.DEPLOY_MIRROR || 'false' }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+      DEPLOY_METHOD: ${{ vars.DEPLOY_METHOD }}
+      BUILD_COMMAND: ${{ vars.BUILD_COMMAND }}
+      BEFORE_DEPLOY_COMMAND: ${{ vars.BEFORE_DEPLOY_COMMAND }}
+      AFTER_DEPLOY_COMMAND: ${{ vars.AFTER_DEPLOY_COMMAND }}
+      DEPLOY_ON_PUSH: ${{ vars.DEPLOY_ON_PUSH || 'false' }}
+      DEPLOY_LAST_COMMITS: ${{ vars.DEPLOY_LAST_COMMITS || 'false' }}
+
+    steps:
+      - name: Resolve deployment mode
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_COMMITS: ${{ inputs.commits }}
+          PUSH_COMMITS: ${{ join(github.event.commits.*.id, ',') }}
+        run: |
+          set -euo pipefail
+
+          # Nothing to deploy if no method is configured for this environment.
+          if [ -z "${DEPLOY_METHOD:-}" ]; then
+            echo "DEPLOY_METHOD is empty — nothing to deploy, skipping CD."
+            echo "SKIP_DEPLOY=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          # SCOPE: full     -> mirror the whole DEPLOY_LOCAL_DIR (legacy deploy.yml)
+          #        selective -> deploy only files touched in COMMITS (legacy separated-delpoy.yml)
+          SCOPE=""
+          COMMITS=""
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            SCOPE="selective"
+            COMMITS="$INPUT_COMMITS"
+          elif [ "$EVENT" = "push" ]; then
+            if [ "$DEPLOY_ON_PUSH" != "true" ]; then
+              echo "DEPLOY_ON_PUSH is not 'true' — skipping deploy on push."
+              echo "SKIP_DEPLOY=true" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            if [ "$DEPLOY_LAST_COMMITS" = "true" ]; then
+              SCOPE="selective"
+              COMMITS="$PUSH_COMMITS"
+            else
+              SCOPE="full"
+            fi
+          else
+            echo "::warning::Unsupported event '$EVENT' — skipping."
+            echo "SKIP_DEPLOY=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          # GIT deploys the whole branch on the server and cannot deploy a file subset.
+          if [ "$SCOPE" = "selective" ] && [ "$DEPLOY_METHOD" = "GIT" ]; then
+            echo "::error::DEPLOY_METHOD=GIT is not supported in selective mode (workflow_dispatch with commits or DEPLOY_LAST_COMMITS=true). GIT deploys the whole branch, not a file subset."
+            exit 1
+          fi
+
+          echo "SKIP_DEPLOY=false" >> "$GITHUB_ENV"
+          echo "SCOPE=$SCOPE" >> "$GITHUB_ENV"
+          echo "COMMITS=$COMMITS" >> "$GITHUB_ENV"
+          echo "Resolved: event=$EVENT scope=$SCOPE method=$DEPLOY_METHOD commits='$COMMITS'"
+
+      - name: Checkout
+        if: ${{ env.SKIP_DEPLOY != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Setup SSH key
+        if: ${{ env.SKIP_DEPLOY != 'true' && (env.DEPLOY_METHOD == 'RSYNC' || env.DEPLOY_METHOD == 'GIT') }}
+        shell: bash
+        run: |
+          TMP_KEY=$(mktemp)
+          echo "$DEPLOY_KEY" > "$TMP_KEY"
+          chmod 600 "$TMP_KEY"
+          echo "TMP_KEY=$TMP_KEY" >> "$GITHUB_ENV"
+
+      - name: Resolve REF_COMMIT
+        if: ${{ env.SKIP_DEPLOY != 'true' && env.SCOPE == 'selective' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "$COMMITS" ]; then
+            REF_COMMIT=$(git rev-parse HEAD)
+            echo "No commits specified — REF_COMMIT = HEAD = $REF_COMMIT"
+          else
+            readarray -t COMMITS_ARR < <(echo "$COMMITS" | tr ',; \t\r\n' '\n' | tr -s '\n' | grep -v '^[[:space:]]*$')
+            REF_COMMIT=$(git log --no-walk --format='%ct %H' "${COMMITS_ARR[@]}" | sort -k1 -nr | head -1 | awk '{print $2}')
+            echo "Resolved REF_COMMIT (latest by committer-date) = $REF_COMMIT"
+          fi
+
+          echo "REF_COMMIT=$REF_COMMIT" >> "$GITHUB_ENV"
+
+          HEAD_COMMIT=$(git rev-parse HEAD)
+          if [ "$REF_COMMIT" != "$HEAD_COMMIT" ]; then
+            echo "Checking out REF_COMMIT (HEAD was $HEAD_COMMIT)"
+            git checkout --force --detach "$REF_COMMIT"
+          fi
+
+      - name: Build
+        if: ${{ env.SKIP_DEPLOY != 'true' && env.BUILD_COMMAND != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          npm ci
+
+          eval "$BUILD_COMMAND"
+
+      - name: Cache lftp
+        if: ${{ env.SKIP_DEPLOY != 'true' && env.DEPLOY_METHOD == 'FTP' }}
+        id: cache-lftp
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-lftp
+
+      - name: Resolve changed files
+        if: ${{ env.SKIP_DEPLOY != 'true' && env.SCOPE == 'selective' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          UPLOAD_FILE="$RUNNER_TEMP/files_upload.txt"
+          DELETE_FILE="$RUNNER_TEMP/files_delete.txt"
+          ALL_FILES="$RUNNER_TEMP/all_files.txt"
+          > "$UPLOAD_FILE"
+          > "$DELETE_FILE"
+          > "$ALL_FILES"
+
+          # Normalize DEPLOY_LOCAL_DIR: strip trailing slash and leading ./
+          LOCAL_DIR="${DEPLOY_LOCAL_DIR%/}"
+          LOCAL_DIR="${LOCAL_DIR#./}"
+          [ "$LOCAL_DIR" = "." ] && LOCAL_DIR=""
+
+          # Build the candidate set: every path ever touched in the relevant commits.
+          if [ -z "$COMMITS" ]; then
+            echo "=== Full deploy mode: collecting all paths ever touched in history ==="
+            git log --pretty=format: --name-only | grep -v '^$' | sort -u > "$ALL_FILES" || true
+          else
+            readarray -t COMMITS_ARR < <(echo "$COMMITS" | tr ',; \t\r\n' '\n' | tr -s '\n' | grep -v '^[[:space:]]*$')
+            for commit in "${COMMITS_ARR[@]}"; do
+              commit="${commit// /}"
+              [ -z "$commit" ] && continue
+              echo "=== Processing commit: $commit ==="
+              git diff-tree --no-commit-id -r --name-only "$commit" >> "$ALL_FILES"
+            done
+            sort -u -o "$ALL_FILES" "$ALL_FILES"
+          fi
+
+          echo "=== Candidate files: $(wc -l < "$ALL_FILES") ==="
+
+          # Classify by state at REF_COMMIT
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            # Apply LOCAL_DIR scope filter
+            if [ -n "$LOCAL_DIR" ]; then
+              [[ "$file" == "$LOCAL_DIR/"* ]] || continue
+              rel="${file#"$LOCAL_DIR/"}"
+            else
+              rel="$file"
+            fi
+
+            if git cat-file -e "$REF_COMMIT:$file" 2>/dev/null; then
+              echo "$rel" >> "$UPLOAD_FILE"
+            else
+              if [ "${DEPLOY_MIRROR}" = "true" ]; then
+                echo "$rel" >> "$DELETE_FILE"
+              fi
+            fi
+          done < "$ALL_FILES"
+
+          sort -u -o "$UPLOAD_FILE" "$UPLOAD_FILE"
+          sort -u -o "$DELETE_FILE" "$DELETE_FILE"
+
+          echo "--- Files to upload: $(wc -l < "$UPLOAD_FILE") ---"
+          cat "$UPLOAD_FILE"
+          echo "--- Files to delete: $(wc -l < "$DELETE_FILE") ---"
+          cat "$DELETE_FILE"
+
+          if ! [ -s "$UPLOAD_FILE" ] && ! [ -s "$DELETE_FILE" ]; then
+            echo "::warning::No files match DEPLOY_LOCAL_DIR='${DEPLOY_LOCAL_DIR}'"
+          fi
+
+      - name: Before deploy command
+        if: ${{ env.SKIP_DEPLOY != 'true' && env.BEFORE_DEPLOY_COMMAND != '' && env.DEPLOY_METHOD != 'FTP' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ssh -i "$TMP_KEY" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30 -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "
+            cd $DEPLOY_PATH
+            $BEFORE_DEPLOY_COMMAND
+          "
+
+      - name: FTP deploy (full mirror)
+        if: ${{ env.SKIP_DEPLOY != 'true' && env.DEPLOY_METHOD == 'FTP' && env.SCOPE == 'full' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ steps.cache-lftp.outputs.cache-hit }}" = "true" ] && ls /var/cache/apt/archives/lftp_*.deb &>/dev/null; then
+            sudo dpkg -i /var/cache/apt/archives/lftp_*.deb || sudo apt-get install -f -y --no-install-recommends
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y --no-install-recommends lftp
+          fi
+
+          DELETE=""
+          if [ "${DEPLOY_MIRROR}" = "true" ]; then
+            DELETE="--delete"
+          fi
+
+          # Runs an lftp session from a commands file
+          # max_retries: lftp-internal retry count per operation
+          run_lftp_session() {
+            local cmd_file="$1" max_retries="$2"
+            {
+              printf '%s\n' \
+                "set net:timeout 30" \
+                "set net:max-retries $max_retries" \
+                "set net:reconnect-interval-base 5" \
+                "set ftp:passive-mode true" \
+                "set ssl:verify-certificate no" \
+                "set ftp:list-options -a" \
+                "set cmd:fail-exit true"
+              cat "$cmd_file"
+              echo "quit"
+            } | lftp -u "$DEPLOY_USER,$DEPLOY_KEY" -p "$DEPLOY_PORT" "$DEPLOY_HOST"
+          }
+
+          # Uploads a single file: 3 bash-level retries, 1 lftp-internal retry each
+          run_lftp_single() {
+            local cmd_file="$1" label="$2"
+            local success=false
+            for attempt in 1 2 3; do
+              if run_lftp_session "$cmd_file" 1; then
+                success=true
+                break
+              else
+                echo "::warning::Per-file attempt $attempt/3 failed for '$label'"
+              fi
+            done
+            if [ "$success" = "false" ]; then
+              echo "::warning::Skipping '$label' after 3 failed attempts"
+            fi
+          }
+
+          BATCH_CMD_FILE="$RUNNER_TEMP/lftp_batch_cmds.txt"
+          BATCH_LOG="$RUNNER_TEMP/lftp_batch.log"
+          printf '%s\n' "mirror -R --no-perms --parallel=2 --verbose --exclude-glob '.git*' $DELETE -x '(^|/)\.' \"$DEPLOY_LOCAL_DIR\" \"$DEPLOY_PATH\"" > "$BATCH_CMD_FILE"
+
+          # Attempt batch: 3 tries, 5 lftp-internal retries each
+          echo "Attempting batch mirror..."
+          batch_ok=false
+          for attempt in 1 2 3; do
+            if run_lftp_session "$BATCH_CMD_FILE" 5 >"$BATCH_LOG" 2>&1; then
+              cat "$BATCH_LOG"
+              echo "Batch mirror succeeded on attempt $attempt"
+              batch_ok=true
+              break
+            else
+              echo "::warning::Batch mirror attempt $attempt/3 failed. lftp output:"
+              cat "$BATCH_LOG"
+            fi
+          done
+
+          # Fallback: per-file upload (deletions skipped in fallback mode)
+          if [ "$batch_ok" = "false" ]; then
+            echo "Falling back to per-file upload..."
+            LOCAL_DIR="${DEPLOY_LOCAL_DIR%/}"
+            LOCAL_DIR="${LOCAL_DIR#./}"
+            [ "$LOCAL_DIR" = "." ] && LOCAL_DIR=""
+            SRC_BASE="${LOCAL_DIR:-.}"
+
+            SINGLE_CMD_FILE="$RUNNER_TEMP/lftp_single_cmd.txt"
+            while IFS= read -r local_path; do
+              rel_path="${local_path#./}"
+              [ -n "$LOCAL_DIR" ] && rel_path="${rel_path#"$LOCAL_DIR/"}"
+              file_dir=$(dirname "$rel_path")
+              if [ "$file_dir" = "." ]; then
+                remote_dir="$DEPLOY_PATH"
+              else
+                remote_dir="$DEPLOY_PATH/$file_dir"
+              fi
+              printf '%s\n' "mkdir -fp \"$remote_dir\"" "put -O \"$remote_dir\" \"$local_path\"" > "$SINGLE_CMD_FILE"
+              run_lftp_single "$SINGLE_CMD_FILE" "$rel_path"
+            done < <(find "$SRC_BASE" \( -name '.git' -prune \) -o -type f -print)
+          fi
+
+      - name: FTP deploy (selective)
+        if: ${{ env.SKIP_DEPLOY != 'true' && env.DEPLOY_METHOD == 'FTP' && env.SCOPE == 'selective' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ steps.cache-lftp.outputs.cache-hit }}" = "true" ] && ls /var/cache/apt/archives/lftp_*.deb &>/dev/null; then
+            sudo dpkg -i /var/cache/apt/archives/lftp_*.deb || sudo apt-get install -f -y --no-install-recommends
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y --no-install-recommends lftp
+          fi
+
+          LOCAL_DIR="${DEPLOY_LOCAL_DIR%/}"
+          LOCAL_DIR="${LOCAL_DIR#./}"
+          [ "$LOCAL_DIR" = "." ] && LOCAL_DIR=""
+
+          # Runs an lftp session from a commands file
+          # max_retries: lftp-internal retry count per operation
+          run_lftp_session() {
+            local cmd_file="$1" max_retries="$2"
+            {
+              printf '%s\n' \
+                "set net:timeout 30" \
+                "set net:max-retries $max_retries" \
+                "set net:reconnect-interval-base 5" \
+                "set ftp:passive-mode true" \
+                "set ssl:verify-certificate no" \
+                "set ftp:list-options -a" \
+                "set cmd:fail-exit true"
+              cat "$cmd_file"
+              echo "quit"
+            } | lftp -u "$DEPLOY_USER,$DEPLOY_KEY" -p "$DEPLOY_PORT" "$DEPLOY_HOST"
+          }
+
+          # Uploads/deletes a single file: 3 bash-level retries, 1 lftp-internal retry each
+          run_lftp_single() {
+            local cmd_file="$1" label="$2"
+            local success=false
+            for attempt in 1 2 3; do
+              if run_lftp_session "$cmd_file" 1; then
+                success=true
+                break
+              else
+                echo "::warning::Per-file attempt $attempt/3 failed for '$label'"
+              fi
+            done
+            if [ "$success" = "false" ]; then
+              echo "::warning::Skipping '$label' after 3 failed attempts"
+            fi
+          }
+
+          BATCH_CMD_FILE="$RUNNER_TEMP/lftp_batch_cmds.txt"
+          BATCH_LOG="$RUNNER_TEMP/lftp_batch.log"
+
+          UPLOAD_FILE="$RUNNER_TEMP/files_upload.txt"
+          DELETE_FILE="$RUNNER_TEMP/files_delete.txt"
+
+          # --- UPLOADS ---
+          if [ -s "$UPLOAD_FILE" ]; then
+            # Build a single batch script with all put commands
+            > "$BATCH_CMD_FILE"
+            while IFS= read -r file; do
+              [ -z "$file" ] && continue
+              if [ -z "$LOCAL_DIR" ]; then
+                src_path="./$file"
+              else
+                src_path="./$LOCAL_DIR/$file"
+              fi
+              file_dir=$(dirname "$file")
+              if [ "$file_dir" = "." ]; then
+                remote_dir="$DEPLOY_PATH"
+              else
+                remote_dir="$DEPLOY_PATH/$file_dir"
+              fi
+              echo "mkdir -fp \"$remote_dir\"" >> "$BATCH_CMD_FILE"
+              echo "put -O \"$remote_dir\" \"$src_path\"" >> "$BATCH_CMD_FILE"
+            done < "$UPLOAD_FILE"
+
+            # Attempt batch: 3 tries, 5 lftp-internal retries each
+            echo "Attempting batch upload..."
+            batch_ok=false
+            for attempt in 1 2 3; do
+              if run_lftp_session "$BATCH_CMD_FILE" 5 >"$BATCH_LOG" 2>&1; then
+                cat "$BATCH_LOG"
+                echo "Batch upload succeeded on attempt $attempt"
+                batch_ok=true
+                break
+              else
+                echo "::warning::Batch upload attempt $attempt/3 failed. lftp output:"
+                cat "$BATCH_LOG"
+              fi
+            done
+
+            # Fallback: upload each file individually
+            if [ "$batch_ok" = "false" ]; then
+              echo "Falling back to per-file upload..."
+              while IFS= read -r file; do
+                [ -z "$file" ] && continue
+                if [ -z "$LOCAL_DIR" ]; then
+                  src_path="./$file"
+                else
+                  src_path="./$LOCAL_DIR/$file"
+                fi
+                file_dir=$(dirname "$file")
+                if [ "$file_dir" = "." ]; then
+                  remote_dir="$DEPLOY_PATH"
+                else
+                  remote_dir="$DEPLOY_PATH/$file_dir"
+                fi
+                SINGLE_CMD_FILE="$RUNNER_TEMP/lftp_single_cmd.txt"
+                printf '%s\n' "mkdir -fp \"$remote_dir\"" "put -O \"$remote_dir\" \"$src_path\"" > "$SINGLE_CMD_FILE"
+                run_lftp_single "$SINGLE_CMD_FILE" "$file"
+              done < "$UPLOAD_FILE"
+            fi
+          fi
+
+          # --- DELETES ---
+          if [ -s "$DELETE_FILE" ]; then
+            # Build a single batch script with all rm commands
+            > "$BATCH_CMD_FILE"
+            while IFS= read -r file; do
+              [ -z "$file" ] && continue
+              echo "rm -f \"$DEPLOY_PATH/$file\"" >> "$BATCH_CMD_FILE"
+            done < "$DELETE_FILE"
+
+            # Attempt batch delete: 3 tries, 5 lftp-internal retries each
+            echo "Attempting batch delete..."
+            batch_ok=false
+            for attempt in 1 2 3; do
+              if run_lftp_session "$BATCH_CMD_FILE" 5 >"$BATCH_LOG" 2>&1; then
+                cat "$BATCH_LOG"
+                echo "Batch delete succeeded on attempt $attempt"
+                batch_ok=true
+                break
+              else
+                echo "::warning::Batch delete attempt $attempt/3 failed. lftp output:"
+                cat "$BATCH_LOG"
+              fi
+            done
+
+            # Fallback: delete each file individually
+            if [ "$batch_ok" = "false" ]; then
+              echo "Falling back to per-file delete..."
+              while IFS= read -r file; do
+                [ -z "$file" ] && continue
+                SINGLE_CMD_FILE="$RUNNER_TEMP/lftp_single_cmd.txt"
+                printf '%s\n' "rm -f \"$DEPLOY_PATH/$file\"" > "$SINGLE_CMD_FILE"
+                run_lftp_single "$SINGLE_CMD_FILE" "$file"
+              done < "$DELETE_FILE"
+            fi
+          fi
+
+      - name: RSYNC deploy (full)
+        if: ${{ env.SKIP_DEPLOY != 'true' && env.DEPLOY_METHOD == 'RSYNC' && env.SCOPE == 'full' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DELETE=""
+          if [ "${DEPLOY_MIRROR}" = "true" ]; then
+            DELETE="--delete"
+          fi
+
+          rsync -avz --progress $DELETE \
+            -e "ssh -i $TMP_KEY -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30 -p $DEPLOY_PORT" \
+            --exclude='.*' \
+            --no-perms --no-owner --no-group \
+            --keep-dirlinks \
+            "$DEPLOY_LOCAL_DIR/" "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH"
+
+      - name: RSYNC deploy (selective)
+        if: ${{ env.SKIP_DEPLOY != 'true' && env.DEPLOY_METHOD == 'RSYNC' && env.SCOPE == 'selective' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LOCAL_DIR="${DEPLOY_LOCAL_DIR%/}"
+          LOCAL_DIR="${LOCAL_DIR#./}"
+          [ "$LOCAL_DIR" = "." ] && LOCAL_DIR=""
+
+          UPLOAD_FILE="$RUNNER_TEMP/files_upload.txt"
+          DELETE_FILE="$RUNNER_TEMP/files_delete.txt"
+
+          if [ -z "$LOCAL_DIR" ]; then
+            SRC_DIR="./"
+          else
+            SRC_DIR="$LOCAL_DIR/"
+          fi
+
+          if [ -s "$UPLOAD_FILE" ]; then
+            rsync -avz --progress \
+              -e "ssh -i $TMP_KEY -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30 -p $DEPLOY_PORT" \
+              --files-from="$UPLOAD_FILE" \
+              --ignore-missing-args \
+              --no-perms --no-owner --no-group \
+              --keep-dirlinks \
+              "$SRC_DIR" "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH"
+          else
+            echo "No files to upload."
+          fi
+
+          if [ "${DEPLOY_MIRROR}" = "true" ] && [ -s "$DELETE_FILE" ]; then
+            while IFS= read -r file; do
+              [ -z "$file" ] && continue
+              ssh -i "$TMP_KEY" \
+                -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30 -p "$DEPLOY_PORT" \
+                "$DEPLOY_USER@$DEPLOY_HOST" "rm -f \"$DEPLOY_PATH/$file\""
+            done < "$DELETE_FILE"
+          fi
+
+      - name: GIT deploy
+        if: ${{ env.SKIP_DEPLOY != 'true' && env.DEPLOY_METHOD == 'GIT' }}
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ssh -i "$TMP_KEY" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30 -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_HOST "
+            cd $DEPLOY_PATH
+            if [ ! -d '.git' ]; then
+              git clone --branch ${GITHUB_REF_NAME} git@github.com:${GITHUB_REPOSITORY}.git .
+            else
+              if [ "${DEPLOY_MIRROR}" = "true" ]; then
+                git fetch origin ${GITHUB_REF_NAME}
+                git reset --hard origin/${GITHUB_REF_NAME}
+              else
+                git pull origin ${GITHUB_REF_NAME}
+              fi
+            fi
+          "
+
+      - name: After deploy command
+        if: ${{ env.SKIP_DEPLOY != 'true' && env.AFTER_DEPLOY_COMMAND != '' && env.DEPLOY_METHOD != 'FTP' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ssh -i "$TMP_KEY" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30 -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "
+            cd $DEPLOY_PATH
+            $AFTER_DEPLOY_COMMAND
+          "
+
+      - name: Cleanup SSH key
+        if: always()
+        shell: bash
+        run: |
+          [ -n "${TMP_KEY:-}" ] && [ -f "$TMP_KEY" ] && rm -f "$TMP_KEY" || true

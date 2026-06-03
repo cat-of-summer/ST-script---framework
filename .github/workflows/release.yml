@@ -1,14 +1,15 @@
 name: release
 
 on:
-  push:
-    tags: ['v*']
+  create:
 
 permissions:
-  contents: write
+  contents: read
+  packages: write
 
 jobs:
   get-branch:
+    if: ${{ github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
     outputs:
       branch: ${{ steps.find-branch.outputs.branch }}
@@ -93,3 +94,31 @@ jobs:
           files: ${{ steps.stage.outputs.files }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  npm-publish:
+    needs: get-branch
+    if: ${{ vars.PUBLISH_TO_NPM == 'true' }}
+    runs-on: ubuntu-latest
+
+    environment: ${{ needs.get-branch.outputs.branch }}
+
+    env:
+      BUILD_COMMAND: ${{ vars.BUILD_COMMAND }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          registry-url: 'https://npm.pkg.github.com'
+
+      - name: Build
+        if: ${{ env.BUILD_COMMAND != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$BUILD_COMMAND"
+
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

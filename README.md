@@ -58,13 +58,31 @@ src/
 `dist/` is generated and git-ignored. It is built on `npm install` (`prepare`),
 on `npm publish` (`prepack`), and in CI to attach release artifacts.
 
-## A. Use via npm (ESM)
+## A. Use via npm
+
+Пакет опубликован в GitHub Packages (приватный реестр). Для установки нужен
+read-only токен GitHub.
+
+### 1. Получить токен
+
+GitHub → Settings → Developer settings → Fine-grained personal access tokens → Generate new token:
+
+- **Repository access**: `cat-of-summer/ST-script---framework`
+- **Permissions**: `read:packages`
+
+### 2. Скопировать `.npmrc` в проект потребителя
+
+Скопируйте файл `.npmrc` из корня этого репозитория к себе в проект — токен уже вписан.
+
+### 3. Установить
 
 ```bash
 npm install @cat-of-summer/st-script
 ```
 
-Per-module (recommended — only what you use):
+### 4. Использовать
+
+Per-module (рекомендуется — только то, что нужно):
 
 ```js
 import st_modal from '@cat-of-summer/st-script/st_modal';
@@ -73,68 +91,19 @@ import st_typograf from '@cat-of-summer/st-script/st_typograf';
 const modal = new st_modal({ content: '#promo', overlay: true });
 ```
 
-Or everything from the aggregate barrel:
+Или весь пакет через barrel-экспорт:
 
 ```js
 import { st_modal, st_cookie, App } from '@cat-of-summer/st-script';
 ```
 
-The Web Component registers itself on import — `import '@cat-of-summer/st-script/st_app'`
-then use `<st-app>` in markup. Optional app configs are plain objects you register
-yourself (so `st_app` loads once, never duplicated per app):
+Web Component регистрирует себя при импорте:
 
 ```js
 import App from '@cat-of-summer/st-script/st_app';
 import formConfig from '@cat-of-summer/st-script/st_app/form';
-App.create(formConfig);   // now <st-app app="form"> works
+App.create(formConfig);   // теперь работает <st-app app="form">
 ```
-
-## B. CDN — ES module
-
-```html
-<script type="module">
-  import st_modal from 'https://cdn.jsdelivr.net/npm/@cat-of-summer/st-script@0.1.0/dist/st_modal.esm.min.js';
-  new st_modal({ content: '#promo' });
-</script>
-```
-
-## C. CDN — plain script (non-module)
-
-```html
-<!-- exposes window.st_modal -->
-<script defer src="https://cdn.jsdelivr.net/npm/@cat-of-summer/st-script@0.1.0/dist/st_modal.min.js"></script>
-
-<!-- st_app: Web Component, registers <st-app> -->
-<script defer src="https://cdn.jsdelivr.net/npm/@cat-of-summer/st-script@0.1.0/dist/st_app.min.js"></script>
-```
-
-```html
-<st-app app="form">…</st-app>
-<script>
-  window.addEventListener('DOMContentLoaded', () => {
-    new st_modal({ content: '#promo' });
-  });
-</script>
-```
-
-## D. Install from the git repository (by tag)
-
-If the package is not (yet) on public npm, install straight from git — the
-`prepare` script compiles `dist/` automatically:
-
-```bash
-npm install "git+https://github.com/cat-of-summer/js_classes.git#v0.1.0"
-```
-
-For a private repo, authenticate with a fine-grained read-only PAT:
-
-```bash
-git config --global url."https://x:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
-npm install
-```
-
-> `npm ci --ignore-scripts` skips `prepare`, so `dist/` won't be built. In such
-> pipelines add `esbuild` and run `npm run build` yourself.
 
 ## Releasing
 
@@ -154,9 +123,6 @@ Both are driven by repository **environment variables** (Settings → Environmen
 - `BUILD_COMMAND` = `npm ci && npm run build`
 - `RELEASE_FILES` = `dist/*` (files attached to the release)
 - `CI_COMMAND` (optional) — extra checks/tests in CI.
-
-Once published to public npm (`npm publish` — `prepack` compiles `dist/`), the
-jsDelivr/unpkg CDN URLs above work with no further changes.
 
 ## Examples
 
