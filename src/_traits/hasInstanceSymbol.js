@@ -1,5 +1,6 @@
 const instance = Symbol();
 
+// Один существующий элемент: Element или CSS-селектор → Element | undefined.
 export const element = (param) => {
     try {
         return param instanceof Element ? param : document.querySelector(param);
@@ -8,18 +9,18 @@ export const element = (param) => {
     }
 };
 
+// Множество существующих элементов: Element | NodeList | HTMLCollection | Array |
+// CSS-селектор → Array<Element>. Без побочных эффектов (несовпадение → []).
 export const elements = (param) => {
+    if (param == null) return [];
     if (param instanceof Element) return [param];
-    if (param instanceof NodeList || param instanceof HTMLCollection) return param;
+    if (param instanceof NodeList || param instanceof HTMLCollection) return [...param];
+    if (Array.isArray(param)) return param.flatMap(elements);
 
     try {
-        const result = document.querySelectorAll(param);
-        if (result.length === 0) throw new Error();
-        return result;
+        return [...document.querySelectorAll(param)];
     } catch {
-        return [document.body.appendChild(
-            new DOMParser().parseFromString(param, 'text/html').body.firstElementChild
-        )];
+        return [];
     }
 };
 

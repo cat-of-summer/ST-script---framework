@@ -9,7 +9,6 @@
 - [cookie](cookie/)
 - [core](core/)
 - [modal](modal/)
-- [st_accordion](st_accordion/)
 - [st_button_widget](st_button_widget/)
 - [st_links_widget](st_links_widget/)
 - [st_mask](st_mask/)
@@ -18,6 +17,7 @@
 - [st_typograf](st_typograf/)
 - [st_validator](st_validator/)
 - [st_widget](st_widget/)
+- [toggle](toggle/)
 - [uploader](uploader/)
 
 ## Файлы

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Toggle — аккордеон / переключатель / hover-меню</title>
+
+  <!-- IIFE / global build (работает по file://, без CORS). Глобал: window.toggle -->
+  <script defer src="../dist/toggle.min.js"></script>
+
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; }
+    h2 { margin-top: 40px; }
+
+    /* Анимация — только через атрибут [state]. duration задаётся в JS. */
+    [trigger] { cursor: pointer; user-select: none; }
+
+    /* --- Аккордеон --- */
+    .acc-item [trigger] { padding: 12px 16px; background: #f3f3f3; border-radius: 8px; margin-top: 6px; }
+    .acc-item [trigger][state="active"],
+    .acc-item [trigger][state="activating"] { background: #137333; color: #fff; }
+
+    .acc-body {
+      overflow: hidden;
+      transition: grid-template-rows .3s ease, opacity .3s ease;
+      display: grid; grid-template-rows: 0fr; opacity: 0;
+    }
+    .acc-body > div { min-height: 0; }
+    .acc-body[state="active"], .acc-body[state="activating"] { grid-template-rows: 1fr; opacity: 1; }
+
+    /* --- Кнопка-переключатель --- */
+    .switch {
+      width: 56px; height: 30px; border-radius: 999px; background: #ccc;
+      position: relative; transition: background .25s;
+    }
+    .switch::after {
+      content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px;
+      border-radius: 50%; background: #fff; transition: transform .25s;
+    }
+    .switch[state="active"], .switch[state="activating"] { background: #137333; }
+    .switch[state="active"]::after, .switch[state="activating"]::after { transform: translateX(26px); }
+
+    /* --- Hover-меню --- */
+    .menu { display: inline-block; position: relative; }
+    .menu .menu-trigger { padding: 10px 16px; background: #1a73e8; color: #fff; border-radius: 8px; }
+    .menu-drop {
+      /* top: 100% без зазора — иначе курсор пройдёт по «дыре» и меню закроется */
+      position: absolute; top: 100%; left: 0; min-width: 160px;
+      background: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.15); border-radius: 8px; padding: 8px;
+      opacity: 0; transform: translateY(-6px); pointer-events: none; transition: all .2s;
+    }
+    .menu-drop[state="active"], .menu-drop[state="activating"] {
+      opacity: 1; transform: translateY(0); pointer-events: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Toggle</h1>
+  <p>Класс только переключает атрибут <code>state</code>
+     (<code>inactive → activating → active → deactivating</code>) у триггера и его целей.
+     Вся анимация — на CSS.</p>
+
+  <h2>1. Аккордеон (взаимоисключение — вручную в <code>on_activate</code>)</h2>
+  <div id="accordion">
+    <div class="acc-item">
+      <div trigger target="#a1">Раздел 1</div>
+      <div class="acc-body" id="a1"><div style="padding:12px 16px">Содержимое первого раздела.</div></div>
+    </div>
+    <div class="acc-item">
+      <div trigger target="#a2">Раздел 2</div>
+      <div class="acc-body" id="a2"><div style="padding:12px 16px">Содержимое второго раздела.</div></div>
+    </div>
+    <div class="acc-item">
+      <div trigger target="#a3">Раздел 3</div>
+      <div class="acc-body" id="a3"><div style="padding:12px 16px">Содержимое третьего раздела.</div></div>
+    </div>
+  </div>
+
+  <h2>2. Кнопка-переключатель (target — сам триггер)</h2>
+  <div class="switch" trigger id="theme-switch"></div>
+  <p>Состояние: <span id="switch-state">inactive</span></p>
+
+  <h2>3. Hover-меню (action: 'hover', target — соседний элемент)</h2>
+  <!-- trigger на обёртке .menu: .menu-drop — её DOM-потомок, наведение на пункты считается «внутри» -->
+  <div class="menu" trigger>
+    <div class="menu-trigger">Наведи на меню ▾</div>
+    <div class="menu-drop">
+      <div>Пункт 1</div><div>Пункт 2</div><div>Пункт 3</div>
+    </div>
+  </div>
+
+  <script>
+    // defer-скрипт уже выполнился к DOMContentLoaded → window.toggle доступен.
+    window.addEventListener('DOMContentLoaded', () => {
+    const Toggle = window.toggle;
+
+    // 1. Аккордеон. Группировки «из коробки» нет — закрываем соседей в on_activate.
+    const accordion = new Toggle({
+      duration: 0.3,
+      trigger: '#accordion [trigger]',
+      // target берётся из атрибута target="" каждого триггера
+      on_activate(trigger) {
+        for (const other of document.querySelectorAll('#accordion [trigger]'))
+          if (other !== trigger) accordion.deactivate(other);
+      },
+    });
+
+    // 2. Переключатель — без target, триггер переключает только себя.
+    const sw = new Toggle({
+      duration: 0.25,
+      trigger: '#theme-switch',
+      target: null,
+      on_activate:   () => document.getElementById('switch-state').textContent = 'active',
+      on_deactivate: () => document.getElementById('switch-state').textContent = 'inactive',
+    });
+
+    // 3. Hover-меню — target как замыкание (резолвится при каждом наведении).
+    new Toggle({
+      duration: 0.2,
+      action: 'hover',
+      trigger: '.menu',
+      target: trigger => trigger.querySelector('.menu-drop'),
+    });
+    });
+  </script>
+</body>
+</html>

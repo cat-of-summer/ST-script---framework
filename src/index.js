@@ -1,6 +1,5 @@
 // Aggregate entry — re-exports every standalone module.
 export { default as AjaxCardsLoaderXHR } from './AjaxCardsLoaderXHR/index.js';
-export { default as st_accordion } from './st_accordion/index.js';
 export { default as App } from './app/index.js';
 export { default as st_button_widget } from './st_button_widget/index.js';
 export { default as Cookie } from './cookie/index.js';
@@ -10,6 +9,7 @@ export { default as Modal } from './modal/index.js';
 export { default as st_observer } from './st_observer/index.js';
 export { default as st_select } from './st_select/index.js';
 export { default as Core } from './core/index.js';
+export { default as Toggle } from './toggle/index.js';
 export { default as st_typograf } from './st_typograf/index.js';
 export { default as Uploader } from './uploader/index.js';
 export { default as st_validator } from './st_validator/index.js';

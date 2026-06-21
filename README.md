@@ -14,7 +14,7 @@ two flavours per module:
 | `st_cookie`           | `window.st_cookie`  | Cookie helpers.                                  |
 | `st_system`           | `window.st_system`  | Utilities (`merge`, `generate_*`).               |
 | `st_observer`         | `window.st_observer`| IntersectionObserver wrapper.                    |
-| `st_accordion`        | `window.st_accordion`| Accordion.                                      |
+| `toggle`              | `window.toggle`     | State toggler (accordions, switches, hover-menus).|
 | `st_select`           | `window.st_select`  | Custom `<select>`.                               |
 | `st_mask`             | `window.st_mask`    | Input masks.                                      |
 | `uploader`            | `window.uploader`   | File uploader.                                   |
