@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Select — кастомный дропдаун поверх нативного &lt;select&gt;</title>
+
+  <!-- IIFE / global build (работает по file://, без CORS). Глобал: window.select -->
+  <script defer src="../dist/select.min.js"></script>
+
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; }
+    h2 { margin-top: 40px; }
+
+    /* Класс только переключает атрибут [state] у <select-container>. Внешний вид — на CSS. */
+    select-container { font-size: 15px; }
+
+    select-trigger {
+      display: inline-block; min-width: 200px; padding: 9px 14px;
+      border: 1px solid #ccc; border-radius: 8px; background: #fff; cursor: pointer; user-select: none;
+    }
+    select-container[state="open"]    select-trigger,
+    select-container[state="opening"] select-trigger { border-color: #1a73e8; }
+
+    select-options {
+      min-width: 100%; margin-top: 4px; background: #fff;
+      border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12);
+      overflow: hidden; opacity: 0; transform: translateY(-6px);
+      pointer-events: none; transition: all .2s;
+    }
+    /* Анимация открытия — через промежуточные состояния opening/open. duration задаётся в JS. */
+    select-container[state="open"]    select-options,
+    select-container[state="opening"] select-options {
+      opacity: 1; transform: translateY(0); pointer-events: auto;
+    }
+
+    select-option { display: block; padding: 9px 14px; cursor: pointer; }
+    select-option:hover { background: #f3f3f3; }
+    select-option[selected] { background: #e8f0fe; font-weight: 600; }
+    select-option[disabled] { opacity: .4; cursor: default; }
+
+    code { background: #f3f3f3; padding: 1px 5px; border-radius: 4px; }
+    .log { margin-top: 8px; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>Select</h1>
+  <p>Нативный <code>&lt;select&gt;</code> остаётся держателем значения (форма и
+     <code>change</code> работают), поверх него — кастомный дропдаун. Состояние —
+     в атрибуте <code>state</code> (<code>closed → opening → open → closing → closed</code>).</p>
+
+  <h2>1. Одиночный выбор (в форме) + before_change-вето</h2>
+  <form id="form1">
+    <select id="color" name="color">
+      <option value="red">Красный</option>
+      <option value="green">Зелёный</option>
+      <option value="blue">Синий (запрещён)</option>
+      <option value="black" disabled>Чёрный (disabled)</option>
+    </select>
+    <button type="submit">Отправить</button>
+  </form>
+  <div class="log" id="log1">value: —</div>
+
+  <h2>2. Множественный выбор (<code>multiple</code>, панель не закрывается)</h2>
+  <select id="fruits" name="fruits" multiple>
+    <option value="apple">Яблоко</option>
+    <option value="pear">Груша</option>
+    <option value="plum">Слива</option>
+    <option value="grape">Виноград</option>
+  </select>
+  <div class="log" id="log2">выбрано: —</div>
+
+  <h2>3. Открытие по наведению (<code>action: 'hover'</code>)</h2>
+  <select id="city">
+    <option value="msk">Москва</option>
+    <option value="spb">Санкт-Петербург</option>
+    <option value="nsk">Новосибирск</option>
+  </select>
+
+  <script>
+    // defer-скрипт уже выполнился к DOMContentLoaded → window.select доступен.
+    window.addEventListener('DOMContentLoaded', () => {
+      const Select = window.select;
+
+      // 1. Одиночный. before_change возвращает false → «Синий» выбрать нельзя.
+      new Select({
+        target: '#color',
+        duration: 0.2,
+        before_change: (option) => option.value !== 'blue',
+        on_change: (option) => document.getElementById('log1').textContent = 'value: ' + option.value,
+      });
+
+      document.getElementById('form1').addEventListener('submit', (e) => {
+        e.preventDefault();
+        document.getElementById('log1').textContent =
+          'submit → ' + new URLSearchParams(new FormData(e.target)).toString();
+      });
+
+      // 2. Множественный. Панель остаётся открытой; читаем значение из нативного select.
+      const fruits = new Select({
+        target: '#fruits',
+        duration: 0.2,
+        close_on_outside: true,
+        on_change: () => document.getElementById('log2').textContent =
+          'выбрано: ' + (fruits.value[0].join(', ') || '—'),
+      });
+
+      // 3. Hover-открытие.
+      new Select({
+        target: '#city',
+        action: 'hover',
+        duration: 0.2,
+        allow_interrupt: true,
+      });
+    });
+  </script>
+</body>
+</html>

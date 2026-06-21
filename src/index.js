@@ -7,7 +7,7 @@ export { default as st_links_widget } from './st_links_widget/index.js';
 export { default as st_mask } from './st_mask/index.js';
 export { default as Modal } from './modal/index.js';
 export { default as st_observer } from './st_observer/index.js';
-export { default as st_select } from './st_select/index.js';
+export { default as Select } from './select/index.js';
 export { default as Core } from './core/index.js';
 export { default as Toggle } from './toggle/index.js';
 export { default as st_typograf } from './st_typograf/index.js';

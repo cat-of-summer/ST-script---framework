@@ -15,7 +15,7 @@ two flavours per module:
 | `st_system`           | `window.st_system`  | Utilities (`merge`, `generate_*`).               |
 | `st_observer`         | `window.st_observer`| IntersectionObserver wrapper.                    |
 | `toggle`              | `window.toggle`     | State toggler (accordions, switches, hover-menus).|
-| `st_select`           | `window.st_select`  | Custom `<select>`.                               |
+| `select`              | `window.select`     | Custom `<select>` dropdown (hooks, multiple, hover).|
 | `st_mask`             | `window.st_mask`    | Input masks.                                      |
 | `uploader`            | `window.uploader`   | File uploader.                                   |
 | `st_validator`        | `window.st_validator`| Form/field validation.                          |

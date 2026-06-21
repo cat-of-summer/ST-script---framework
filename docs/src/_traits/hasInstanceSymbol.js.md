@@ -44,7 +44,7 @@ class Modal {
 const modal = Modal.find(e.target.closest('modal'));
 ```
 
-Только разрешение элементов (`st_typograf`, `st_select`):
+Только разрешение элементов (`st_typograf`):
 
 ```js
 import { element } from '../_traits/hasInstanceSymbol.js';

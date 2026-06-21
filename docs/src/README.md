@@ -13,7 +13,7 @@
 - [st_links_widget](st_links_widget/)
 - [st_mask](st_mask/)
 - [st_observer](st_observer/)
-- [st_select](st_select/)
+- [select](select/)
 - [st_typograf](st_typograf/)
 - [st_validator](st_validator/)
 - [st_widget](st_widget/)
