@@ -2,8 +2,6 @@ import { element, find, own } from '../_traits/hasInstanceSymbol.js';
 import Core from '../core/index.js';
 
 export default class Loader {
-    data = null;
-
     #config = {};
     #request = null;
 
@@ -85,7 +83,13 @@ export default class Loader {
 
             if (k in branch && k in root && Loader.HOOKS.includes(k)
                 && typeof a == 'function' && typeof b == 'function')
-                v = (...args) => { a.apply(this, args); b.apply(this, args); };
+                // on_load прокидывает data по цепочке (return заменяет); прочие хуки — сайд-эффекты
+                v = k == 'on_load'
+                    ? (response, data, request) => {
+                          let d = a.call(this, response, data, request) ?? data;
+                          return b.call(this, response, d, request) ?? d;
+                      }
+                    : (...args) => { a.apply(this, args); b.apply(this, args); };
             else
                 v = k in branch ? b : a;
 
@@ -123,13 +127,13 @@ export default class Loader {
                 let type = this.#type(response);
                 let cfg  = this.#resolve(type);
 
-                this.data = this.#extract(response, cfg, type);
-                cfg.on_load(response, request);
+                let data = this.#extract(response, cfg, type);
+                data = cfg.on_load(response, data, request) ?? data;
 
                 let nodes = [];
-                let n = cfg.multiple ? (this.data?.length ?? 0) : 1;
+                let n = cfg.multiple ? (data?.length ?? 0) : 1;
                 for (let i = 0; i < n; i++) {
-                    let item = cfg.multiple ? this.data?.[i] : this.data;
+                    let item = cfg.multiple ? data?.[i] : data;
                     let node = cfg.render(item, i);
                     if (node instanceof Node) nodes.push(node);
                 }

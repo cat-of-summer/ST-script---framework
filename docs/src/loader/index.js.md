@@ -28,7 +28,7 @@ new Loader(params)
 | `render` | `Function` | identity | `render(item, i)` → **Node**. Не-`Node` отбрасывается. Для JSON задаётся обязательно |
 | `formats` | `object` | `{}` | Per-type оверрайды: `{ json:{…}, html:{…}, text:{…} }` (см. ниже) |
 
-`this` во всех функциях-параметрах — инстанс `Loader` (доступны `this.data`, `this.params`, `this.html`).
+`this` во всех функциях-параметрах — инстанс `Loader` (доступны `this.params`, `this.html`).
 
 ### Извлечение данных (`source` + `multiple`)
 
@@ -40,8 +40,9 @@ new Loader(params)
 - **JSON**, `source` пуст: весь ответ.
 - **text**: строка как есть.
 
-Результат кладётся в `this.data`. При `multiple: true` ожидается массив (`render` зовётся
-`data.length` раз), при `false` — `render(this.data)` один раз.
+При `multiple: true` ожидается массив (`render` зовётся `data.length` раз), при `false` —
+`render(data)` один раз. Извлечённые данные живут только в рамках одного `load()` —
+постоянного буфера нет.
 
 ### Per-type оверрайды (`formats`)
 
@@ -56,8 +57,8 @@ Lifecycle-хуки `before_init` / `on_init` / `before_load` / `on_failed` / `on
 
 ### Поток обработки `load()`
 
-`before_load(fetchParams)` → `Core.fetch` → определение типа → `this.data = extract(response)`
-→ `on_load(response, request)` → `render` (`multiple` ? на каждый элемент : один раз)
+`before_load(fetchParams)` → `Core.fetch` → определение типа → `data = extract(response)`
+→ `data = on_load(response, data, request) ?? data` → `render` (`multiple` ? на каждый элемент : один раз)
 → `before_paste(nodes)` → вставка по `mode` → `on_paste(nodes, response)`;
 `on_failed(payload)` при ошибке, `on_complete(payload)` всегда.
 
@@ -67,7 +68,7 @@ Lifecycle-хуки `before_init` / `on_init` / `before_load` / `on_failed` / `on
 |---|---|---|---|
 | `before_init` / `on_init` | `config` | В конструкторе (можно править config до резолва `target`) | — |
 | `before_load` | `fetchParams` | Перед запросом | — |
-| `on_load` | `response, request` | После успеха, до рендера (правка `this.data`, вторичные регионы) | ✓ |
+| `on_load` | `response, data, request` | После успеха, до рендера. Вернёт значение → заменит `data` (дедуп/фильтр/сорт); иначе сайд-эффекты | ✓ |
 | `before_paste` | `nodes` | После рендера, до вставки | ✓ |
 | `on_paste` | `nodes, response` | После вставки (вешать listeners) | ✓ |
 | `on_failed` | `payload` | При ошибке/таймауте | — |
@@ -82,7 +83,6 @@ Lifecycle-хуки `before_init` / `on_init` / `before_load` / `on_failed` / `on
 | `clone(params)` | `Loader` | Новый инстанс с унаследованными параметрами (`formats` сливается поверхностно) |
 | `loading` | `boolean` | Идёт ли запрос |
 | `params` | `object` | Текущие не-функциональные параметры (без `formats`) |
-| `data` | `any` | Результат извлечения из последнего ответа |
 | `Loader.html` | `Element` | Хелпер: html-строка/tagged template → первый Element |
 | `Loader.find(el)` | `Loader` | Инстанс, владеющий элементом |
 
