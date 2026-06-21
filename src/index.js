@@ -1,5 +1,5 @@
 // Aggregate entry — re-exports every standalone module.
-export { default as AjaxCardsLoaderXHR } from './AjaxCardsLoaderXHR/index.js';
+export { default as Loader } from './loader/index.js';
 export { default as App } from './app/index.js';
 export { default as st_button_widget } from './st_button_widget/index.js';
 export { default as Cookie } from './cookie/index.js';

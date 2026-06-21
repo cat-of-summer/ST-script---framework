@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loader — ajax-список: фильтр / сортировка / подгрузка (HTML + JSON)</title>
+
+  <!-- IIFE / global build (работает по file://, без сервера). Глобал: window.loader -->
+  <script defer src="../dist/loader.min.js"></script>
+
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 880px; margin: 40px auto; padding: 0 16px; color: #202124; }
+    h1 { margin-bottom: 4px; }
+    p.lead { color: #5f6368; margin-top: 0; }
+    code { background: #f3f3f3; padding: 1px 5px; border-radius: 4px; }
+
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 20px 0; }
+    .controls input, .controls select, .controls button { font: inherit; padding: 8px 10px; border: 1px solid #dadce0; border-radius: 8px; }
+    .controls input[type=search] { flex: 1 1 220px; }
+    .controls button { cursor: pointer; background: #1a73e8; color: #fff; border-color: #1a73e8; }
+    .controls button.ghost { background: #fff; color: #1a73e8; }
+    .controls .fmt { display: inline-flex; gap: 4px; background: #f1f3f4; border-radius: 999px; padding: 3px; }
+    .controls .fmt label { padding: 5px 12px; border-radius: 999px; cursor: pointer; font-size: 14px; }
+    .controls .fmt input { display: none; }
+    .controls .fmt input:checked + span { background: #1a73e8; color: #fff; }
+    .controls .fmt span { padding: 5px 12px; border-radius: 999px; display: inline-block; }
+
+    .meta { color: #5f6368; font-size: 14px; margin: 8px 0; min-height: 20px; }
+
+    /* Контейнер карточек. Спиннер — через атрибут [state], который ставит Loader. */
+    .cards {
+      position: relative; display: grid; gap: 14px; margin: 14px 0;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      transition: opacity .2s;
+    }
+    .cards[state="loading"] { opacity: .45; pointer-events: none; }
+    .cards[state="loading"]::after {
+      content: ''; position: absolute; inset: 0; margin: auto; width: 34px; height: 34px;
+      border: 4px solid #c7d2fe; border-top-color: #1a73e8; border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .card { border: 1px solid #e8eaed; border-radius: 12px; padding: 12px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+    .card .thumb { height: 84px; border-radius: 8px; margin-bottom: 10px; }
+    .card h3 { font-size: 15px; margin: 0 0 6px; }
+    .card .price { font-weight: 600; color: #137333; }
+    .card button[buy] { margin-top: 10px; width: 100%; padding: 7px; border: 0; border-radius: 8px; background: #e8f0fe; color: #1a73e8; cursor: pointer; font: inherit; }
+    .card button[buy].in-cart { background: #137333; color: #fff; }
+
+    .more-row { text-align: center; margin: 16px 0 40px; }
+    #more:disabled { opacity: .5; cursor: default; }
+    .empty { color: #9aa0a6; padding: 20px; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>Loader</h1>
+  <p class="lead">
+    Один инстанс = один список. Запрос через <code>Core.fetch</code>, ответ — <b>HTML</b> или <b>JSON</b>
+    (переключатель справа). Фильтр и сортировка — <code>mode:'replace'</code>, «показать ещё» —
+    <code>mode:'append'</code>. Бэкенда нет: «сервер» отдаёт ответ через <code>Blob URL</code>,
+    запрос идёт настоящим XHR.
+  </p>
+
+  <div class="controls">
+    <input type="search" id="q" placeholder="Фильтр по названию…">
+    <select id="sort">
+      <option value="">без сортировки</option>
+      <option value="price-asc">цена ↑</option>
+      <option value="price-desc">цена ↓</option>
+      <option value="title">название A→Я</option>
+    </select>
+    <span class="fmt">
+      <label><input type="radio" name="fmt" value="html" checked><span>HTML</span></label>
+      <label><input type="radio" name="fmt" value="json"><span>JSON</span></label>
+    </span>
+    <button class="ghost" id="reset" type="button">Сброс</button>
+  </div>
+
+  <div class="meta" id="meta"></div>
+  <div class="cards" id="cards"></div>
+  <div class="more-row"><button id="more" type="button">Показать ещё</button></div>
+
+  <script>
+  window.addEventListener('DOMContentLoaded', () => {
+    const Loader = window.loader;            // default-export класса (IIFE-глобал)
+    const PER = 6;
+
+    // --- демо-данные (вместо БД) ---
+    const COLORS = ['#fde68a','#bfdbfe','#fbcfe8','#bbf7d0','#ddd6fe','#fecaca','#a7f3d0','#fdba74'];
+    const DATA = Array.from({ length: 28 }, (_, i) => ({
+      id: i + 1,
+      title: `Товар ${String(i + 1).padStart(2, '0')}`,
+      price: ((i * 37) % 90 + 10) * 10,
+      color: COLORS[i % COLORS.length],
+    }));
+
+    // --- «сервер»: фильтр+сортировка+страница → Blob URL с нужным Content-Type ---
+    const cardHTML = p => `
+      <article class="card" data-id="${p.id}">
+        <div class="thumb" style="background:${p.color}"></div>
+        <h3>${p.title}</h3>
+        <div class="price">${p.price} ₽</div>
+        <button buy>В корзину</button>
+      </article>`;
+
+    function server({ format, q, sort, page }) {
+      let list = DATA.filter(p => !q || p.title.toLowerCase().includes(q.toLowerCase()));
+      if (sort === 'price-asc')  list.sort((a, b) => a.price - b.price);
+      if (sort === 'price-desc') list.sort((a, b) => b.price - a.price);
+      if (sort === 'title')      list.sort((a, b) => a.title.localeCompare(b.title));
+
+      const total = list.length;
+      const slice = list.slice(page * PER, page * PER + PER);
+
+      const body = format === 'json'
+        ? new Blob([JSON.stringify({ products: slice, total, page })], { type: 'application/json' })
+        // total кладём в data-атрибут обёртки — вторичный регион читаем из ответа в on_load
+        : new Blob([`<div data-total="${total}">${slice.map(cardHTML).join('')}</div>`], { type: 'text/html' });
+
+      return URL.createObjectURL(body);
+    }
+
+    // --- общая логика для обоих форматов ---
+    const wireCard = card => card.querySelector('[buy]')?.addEventListener('click', e => {
+      e.target.classList.toggle('in-cart');
+      e.target.textContent = e.target.classList.contains('in-cart') ? '✓ В корзине' : 'В корзину';
+    });
+
+    let state = { q: '', sort: '', page: 0, total: 0, format: 'html' };
+    let lastUrl = null;
+
+    const afterLoad = () => {
+      const shown = (state.page + 1) * PER;
+      document.getElementById('more').disabled = shown >= state.total;
+      document.getElementById('meta').textContent =
+        state.total ? `Найдено: ${state.total} · показано ${Math.min(shown, state.total)}` : '';
+      if (!state.total && state.page === 0)
+        document.getElementById('cards').innerHTML = '<div class="empty">Ничего не найдено</div>';
+    };
+
+    // on_complete: чистим Blob URL и обновляем мету/кнопку (ноды уже вставлены, state.total задан в on_load)
+    const onComplete = () => {
+      if (lastUrl) { URL.revokeObjectURL(lastUrl); lastUrl = null; }
+      afterLoad();
+    };
+
+    // HTML-вариант: source-селектор → дефолтный extract сам берёт .card из ответа,
+    // render по умолчанию = вернуть найденный элемент (identity).
+    const htmlLoader = new Loader({
+      target: '#cards',
+      source: '.card',
+      allow_interrupt: true,
+      on_load(doc) { state.total = +doc.querySelector('[data-total]').dataset.total; }, // вторичный регион
+      on_paste: nodes => nodes.forEach(wireCard),
+      on_complete: onComplete,
+    });
+
+    // JSON-вариант: свой extract (массив из ответа) + render через шаблон-хелпер Loader.html.
+    const jsonLoader = new Loader({
+      target: '#cards',
+      allow_interrupt: true,
+      extract: r => r.products,
+      render: p => Loader.html(cardHTML(p)),
+      on_load(r) { state.total = r.total; },
+      on_paste: nodes => nodes.forEach(wireCard),
+      on_complete: onComplete,
+    });
+
+    const loaderOf = () => state.format === 'json' ? jsonLoader : htmlLoader;
+
+    function run(mode) {
+      if (mode === 'replace') document.querySelector('.empty')?.remove();
+      lastUrl = server(state);
+      loaderOf().load({ url: lastUrl, mode }); // итог — в on_complete (afterLoad)
+    }
+
+    // --- управление ---
+    const reload = () => { state.page = 0; run('replace'); };
+
+    document.getElementById('q').addEventListener('input', e => { state.q = e.target.value.trim(); reload(); });
+    document.getElementById('sort').addEventListener('change', e => { state.sort = e.target.value; reload(); });
+    document.querySelectorAll('input[name=fmt]').forEach(r =>
+      r.addEventListener('change', e => { state.format = e.target.value; reload(); }));
+
+    document.getElementById('more').addEventListener('click', () => { state.page++; run('append'); });
+    document.getElementById('reset').addEventListener('click', () => {
+      state = { q: '', sort: '', page: 0, total: 0, format: state.format };
+      document.getElementById('q').value = '';
+      document.getElementById('sort').value = '';
+      reload();
+    });
+
+    reload(); // первая загрузка
+  });
+  </script>
+</body>
+</html>

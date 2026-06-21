@@ -3,11 +3,11 @@
 
 ## Папки
 
-- [AjaxCardsLoaderXHR](AjaxCardsLoaderXHR/)
 - [_traits](_traits/)
 - [app](app/)
 - [cookie](cookie/)
 - [core](core/)
+- [loader](loader/)
 - [modal](modal/)
 - [st_button_widget](st_button_widget/)
 - [st_links_widget](st_links_widget/)

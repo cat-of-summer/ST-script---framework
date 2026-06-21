@@ -21,7 +21,7 @@ two flavours per module:
 | `st_validator`        | `window.st_validator`| Form/field validation.                          |
 | `st_button_widget`    | `window.st_button_widget`| Floating button widget.                     |
 | `st_links_widget`     | `window.st_links_widget`| Links widget.                                |
-| `AjaxCardsLoaderXHR`  | `window.AjaxCardsLoaderXHR`| XHR cards loader.                         |
+| `loader`              | `window.loader`     | Ajax list loader (cards: подгрузка/фильтр/сортировка) via `Core.fetch`. |
 | `st_app`              | `<st-app>` element  | **Web Component** — `<script defer>` only (self-registers). |
 | `st_app/form`         | `window.form`       | Form app **config object** — register with `App.create(form)`; no `st_app` bundled. |
 

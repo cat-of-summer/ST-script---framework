@@ -99,7 +99,7 @@
       duration: 0.3,
       trigger: '#accordion [trigger]',
       // target берётся из атрибута target="" каждого триггера
-      on_activate(trigger) {
+      before_activate(trigger) {
         for (const other of document.querySelectorAll('#accordion [trigger]'))
           if (other !== trigger) accordion.deactivate(other);
       },
@@ -119,6 +119,7 @@
       duration: 0.2,
       action: 'hover',
       trigger: '.menu',
+      allow_interrupt: true,
       target: trigger => trigger.querySelector('.menu-drop'),
     });
     });
