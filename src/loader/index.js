@@ -4,11 +4,14 @@ import Core from '../core/index.js';
 export default class Loader {
     data = null;
 
-    #params = {};
-    #methods = {};
+    #config = {};
     #request = null;
 
     static find = find;
+
+    // composable-хуки: при per-type оверрайде root → branch вызываются оба
+    static HOOKS = ['before_load', 'on_load', 'before_paste', 'on_paste',
+                    'on_failed', 'on_complete', 'before_init', 'on_init'];
 
     // строка ИЛИ tagged template → первый Element (шаблон-хелпер)
     static html(s, ...v) {
@@ -16,29 +19,34 @@ export default class Loader {
         return new DOMParser().parseFromString(str, 'text/html').body.firstElementChild;
     }
 
-    get params()  { return this.#params; }
+    get params() {
+        let o = {};
+        for (let [k, v] of Object.entries(this.#config))
+            if (typeof v != 'function' && k != 'formats') o[k] = v;
+        return o;
+    }
     get loading() { return !!this.#request; }
 
     html = Loader.html;
 
-    clone(params) {
-        return new Loader({ ...this.#params, ...this.#methods, ...params, parent: this });
+    clone(params = {}) {
+        return new Loader({
+            ...this.#config, ...params,
+            formats: { ...this.#config.formats, ...params.formats },
+            parent: this,
+        });
     }
 
     constructor(params) {
-        params = {
-            target: null,            // селектор/Element контейнера карточек
-            source: null,            // CSS-селектор карточки в HTML-ответе
+        this.#config = {
+            target: null,            // селектор/Element контейнера
+            source: null,            // HTML: CSS-селектор; JSON: dot-path до данных
             mode: 'append',          // append | replace | prepend
+            multiple: true,          // true → массив элементов; false → один элемент
             allow_interrupt: false,
+            formats: {},             // per-type оверрайды: { json:{…}, html:{…}, text:{…} }
 
-            render(item) { return item; },                 // деф.: identity (HTML-элемент)
-            count() { return this.data?.length ?? 0; },    // сколько раз звать render
-            extract(response) {                            // response → this.data (умно лишь для HTML)
-                return response instanceof Document
-                    ? [...response.querySelectorAll(this.params.source)]
-                    : response;
-            },
+            render(item) { return item; },   // деф.: identity (готовый HTML-элемент)
 
             before_load:  () => {},
             on_load:      () => {},
@@ -49,61 +57,98 @@ export default class Loader {
             before_init:  () => {},
             on_init:      () => {},
 
-            ...params
+            ...params,
         };
 
-        for (let [key, value] of Object.entries(params))
-            if (typeof value == 'function') {
-                this[key] = value.bind(this);
-                this.#methods[key] = value;
-            } else
-                this.#params[key] = value;
+        this.#config.before_init.call(this, this.#config);
 
-        this.before_init(this.#params);
-
-        this.target = element(this.#params.target);
+        this.target = element(this.#config.target);
         if (this.target) own(this.target, this);
 
-        this.on_init(this.#params);
+        this.#config.on_init.call(this, this.#config);
+    }
+
+    // тип ответа из распарсенных Core данных
+    #type(response) {
+        if (response instanceof Document) return 'html';
+        if (typeof response == 'string')  return 'text';
+        return 'json';
+    }
+
+    // эффективный конфиг для типа: root + formats[type] (хуки складываются, прочее перекрывается)
+    #resolve(type) {
+        let root = this.#config, branch = root.formats?.[type] ?? {}, out = {};
+
+        for (let k of new Set([...Object.keys(root), ...Object.keys(branch)])) {
+            if (k == 'formats') continue;
+            let a = root[k], b = branch[k], v;
+
+            if (k in branch && k in root && Loader.HOOKS.includes(k)
+                && typeof a == 'function' && typeof b == 'function')
+                v = (...args) => { a.apply(this, args); b.apply(this, args); };
+            else
+                v = k in branch ? b : a;
+
+            out[k] = typeof v == 'function' ? v.bind(this) : v;
+        }
+        return out;
+    }
+
+    // response → this.data по source/multiple/type
+    #extract(response, cfg, type) {
+        if (type == 'html') {
+            let root = response.body ?? response.documentElement ?? response;
+            if (cfg.source)
+                return cfg.multiple ? [...root.querySelectorAll(cfg.source)] : root.querySelector(cfg.source);
+            return cfg.multiple ? [...root.children] : root.firstElementChild;
+        }
+        if (type == 'json')
+            return cfg.source ? cfg.source.split('.').reduce((o, k) => o?.[k], response) : response;
+        return response; // text
     }
 
     load(params = {}) {
-        let { mode = this.#params.mode, ...fetch } =
-            typeof params == 'string' ? { url: params } : params;
+        let { mode, ...fetch } = typeof params == 'string' ? { url: params } : params;
 
         if (this.#request) {
-            if (!this.#params.allow_interrupt) return this;
+            if (!this.#config.allow_interrupt) return this;
             this.#request.abort();
         }
 
         this.target?.setAttribute('state', 'loading');
-        this.before_load(fetch);
+        this.#config.before_load.call(this, fetch);
 
         let req = Core.fetch(fetch)
             .onSuccess(({ data: response, request }) => {
-                this.data = this.extract(response);
-                this.on_load(response, request);
+                let type = this.#type(response);
+                let cfg  = this.#resolve(type);
+
+                this.data = this.#extract(response, cfg, type);
+                cfg.on_load(response, request);
 
                 let nodes = [];
-                for (let i = 0, n = this.count(); i < n; i++) {
-                    let node = this.render(this.data?.[i], i);
-                    if (node) nodes.push(node);
+                let n = cfg.multiple ? (this.data?.length ?? 0) : 1;
+                for (let i = 0; i < n; i++) {
+                    let item = cfg.multiple ? this.data?.[i] : this.data;
+                    let node = cfg.render(item, i);
+                    if (node instanceof Node) nodes.push(node);
                 }
 
-                this.before_paste(nodes);
+                cfg.before_paste(nodes);
 
                 let frag = document.createDocumentFragment();
-                nodes.forEach(n => frag.append(n));
+                nodes.forEach(node => frag.append(node));
 
+                let m = mode ?? cfg.mode;
                 if (this.target)
-                    mode == 'replace' ? this.target.replaceChildren(frag)
-                  : mode == 'prepend' ? this.target.prepend(frag)
-                  :                     this.target.append(frag);
+                    m == 'replace' ? this.target.replaceChildren(frag)
+                  : m == 'prepend' ? this.target.prepend(frag)
+                  :                  this.target.append(frag);
 
-                this.on_paste(nodes, response);
+                cfg.on_paste(nodes, response);
             })
-            .onFailed(payload => this.on_failed(payload))
-            .onComplete(payload => this.on_complete(payload));
+            .onFailed(payload => this.#config.on_failed.call(this, payload))
+            .onComplete(payload => this.#config.on_complete.call(this, payload));
 
         // сброс состояния на любом завершении; guard от устаревшего finally при abort+новый запрос
         req.finally(() => {

@@ -145,34 +145,33 @@
       afterLoad();
     };
 
-    // HTML-вариант: source-селектор → дефолтный extract сам берёт .card из ответа,
-    // render по умолчанию = вернуть найденный элемент (identity).
-    const htmlLoader = new Loader({
-      target: '#cards',
-      source: '.card',
-      allow_interrupt: true,
-      on_load(doc) { state.total = +doc.querySelector('[data-total]').dataset.total; }, // вторичный регион
-      on_paste: nodes => nodes.forEach(wireCard),
-      on_complete: onComplete,
-    });
-
-    // JSON-вариант: свой extract (массив из ответа) + render через шаблон-хелпер Loader.html.
-    const jsonLoader = new Loader({
+    // Один инстанс на оба формата. Тип ответа Loader определяет сам, а formats
+    // переопределяет маппинг под каждый: для HTML — source-селектор (.card) и
+    // identity-render, для JSON — dot-path до массива (products) и render через
+    // шаблон-хелпер. Общие хуки (on_paste/on_complete) живут в корне; per-type
+    // on_load складывается с ними и пишет вторичный регион (total).
+    const loader = new Loader({
       target: '#cards',
       allow_interrupt: true,
-      extract: r => r.products,
-      render: p => Loader.html(cardHTML(p)),
-      on_load(r) { state.total = r.total; },
       on_paste: nodes => nodes.forEach(wireCard),
       on_complete: onComplete,
+      formats: {
+        html: {
+          source: '.card',
+          on_load(doc) { state.total = +doc.querySelector('[data-total]').dataset.total; },
+        },
+        json: {
+          source: 'products',
+          render: p => Loader.html(cardHTML(p)),
+          on_load(r) { state.total = r.total; },
+        },
+      },
     });
-
-    const loaderOf = () => state.format === 'json' ? jsonLoader : htmlLoader;
 
     function run(mode) {
       if (mode === 'replace') document.querySelector('.empty')?.remove();
       lastUrl = server(state);
-      loaderOf().load({ url: lastUrl, mode }); // итог — в on_complete (afterLoad)
+      loader.load({ url: lastUrl, mode }); // итог — в on_complete (afterLoad)
     }
 
     // --- управление ---
