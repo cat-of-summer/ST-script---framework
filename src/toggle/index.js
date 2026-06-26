@@ -6,6 +6,8 @@ export default class Toggle {
     #params = {};
     #methods = {};
     #timers = new WeakMap();
+    #anchors = new Map();
+    #last = null;
 
     static find = find;
 
@@ -27,6 +29,8 @@ export default class Toggle {
             target: null,
             allow_interrupt: false,
             action: 'click',
+            anchor: false,
+            keep_history: false,
 
             before_activate:    () => {},
             on_activate:        () => {},
@@ -43,6 +47,8 @@ export default class Toggle {
 
             ...params
         };
+
+        if (params.keep_history) params.anchor = true;
 
         for (let [key, value] of Object.entries(params))
             if (typeof value == "function" && key != 'target') {
@@ -61,11 +67,20 @@ export default class Toggle {
             init(trigger);
             this.#targets(trigger).forEach(init);
 
+            let id = this.#anchorId(trigger);
+            if (id) this.#anchors.set(id, trigger);
+
             if (this.#params.action == 'hover') {
                 trigger.addEventListener('mouseenter', () => this.activate(trigger));
                 trigger.addEventListener('mouseleave', () => this.deactivate(trigger));
             } else
                 trigger.addEventListener(this.#params.action, () => this.toggle(trigger));
+        }
+
+        if (this.#params.anchor) {
+            this.#applyHash();
+            if (this.#params.keep_history)
+                window.addEventListener('hashchange', () => this.#applyHash());
         }
 
         this.on_init(this.#params);
@@ -78,6 +93,42 @@ export default class Toggle {
         target ??= trigger.getAttribute('target');
 
         return elements(target);
+    }
+
+    #anchorId(trigger) {
+        if (!this.#params.anchor) return null;
+        if (trigger.id) return trigger.id;
+
+        let targets = this.#targets(trigger);
+        return targets.length === 1 && targets[0].id ? targets[0].id : null;
+    }
+
+    #writeHash(id) {
+        let url = '#' + id;
+        if (location.hash === url) return;
+
+        this.#params.keep_history
+            ? history.pushState(null, '', url)
+            : history.replaceState(null, '', url);
+    }
+
+    #clearHash() {
+        if (!location.hash) return;
+
+        let base = location.pathname + location.search;
+        this.#params.keep_history
+            ? history.pushState(null, '', base)
+            : history.replaceState(null, '', base);
+    }
+
+    #applyHash() {
+        let trigger = this.#anchors.get(location.hash.slice(1));
+
+        if (trigger) this.activate(trigger);
+        else if (this.#params.keep_history && this.#last) {
+            this.deactivate(this.#last);
+            this.#last = null;
+        }
     }
 
     #transition(els, process, final, before, after) {
@@ -107,6 +158,12 @@ export default class Toggle {
             process = on ? 'activating' : 'deactivating',
             final   = on ? 'active'     : 'inactive',
             targets = this.#targets(trigger);
+
+        let id = this.#anchorId(trigger);
+        if (id) {
+            if (on) { this.#writeHash(id); this.#last = trigger; }
+            else if (location.hash.slice(1) === id) { this.#clearHash(); this.#last = null; }
+        }
 
         this.#transition([trigger], process, final,
             el => this[`before_${verb}`](el, targets), el => this[`on_${verb}`](el, targets));
