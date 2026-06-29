@@ -9,6 +9,7 @@
 - [core](core/)
 - [loader](loader/)
 - [modal](modal/)
+- [route](route/)
 - [select](select/)
 - [st_button_widget](st_button_widget/)
 - [st_links_widget](st_links_widget/)
