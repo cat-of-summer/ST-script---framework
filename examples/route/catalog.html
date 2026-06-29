@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Route — каталог</title>
+
+  <script defer src="../../dist/route.min.js"></script>
+  <script defer src="routes.js"></script>
+
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; }
+    nav { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+    nav a { padding: 8px 14px; background: #f3f3f3; border-radius: 8px; text-decoration: none; color: #222; }
+    nav a.active { background: #1a73e8; color: #fff; }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0; }
+    .card { padding: 16px; border: 1px solid #e0e0e0; border-radius: 10px; }
+    .card a { color: #1a73e8; }
+    .filters { display: flex; gap: 8px; margin-bottom: 12px; }
+    .filters a { font-size: 13px; padding: 6px 10px; background: #f3f3f3; border-radius: 6px; text-decoration: none; color: #222; }
+    pre#log { background: #0f172a; color: #d1fae5; padding: 16px; border-radius: 10px; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.5; }
+    code { background: #f3f3f3; padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Каталог</h1>
+
+  <nav>
+    <a href="index.html">Главная</a>
+    <a href="catalog.html">Каталог</a>
+    <a href="catalog.html?category=phones">Каталог: телефоны</a>
+    <a href="product-1.html">Товар 1</a>
+    <a href="product-2.html">Товар 2</a>
+  </nav>
+
+  <p>Фильтр берётся из GET-параметра <code>?category=</code> и доступен в обработчике через
+     <code>this.query</code>.</p>
+
+  <div class="filters">
+    <a href="catalog.html">Все</a>
+    <a href="catalog.html?category=phones">Телефоны</a>
+    <a href="catalog.html?category=laptops">Ноутбуки</a>
+  </div>
+
+  <div class="grid">
+    <div class="card" data-category="phones"><a href="product-1.html">Товар 1</a><div>Категория: phones</div></div>
+    <div class="card" data-category="laptops"><a href="product-2.html">Товар 2</a><div>Категория: laptops</div></div>
+  </div>
+
+  <h2>Журнал реакций</h2>
+  <pre id="log"></pre>
+</body>
+</html>

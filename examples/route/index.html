@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Route — главная</title>
+
+  <!-- IIFE / global build (работает по file://, без CORS). Глобал: window.route -->
+  <script defer src="../../dist/route.min.js"></script>
+  <!-- Общий роутинг для всех страниц демо -->
+  <script defer src="routes.js"></script>
+
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; }
+    nav { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+    nav a {
+      padding: 8px 14px; background: #f3f3f3; border-radius: 8px; text-decoration: none; color: #222;
+    }
+    nav a.active { background: #1a73e8; color: #fff; }
+    pre#log {
+      background: #0f172a; color: #d1fae5; padding: 16px; border-radius: 10px;
+      white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.5;
+    }
+    code { background: #f3f3f3; padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Route — диспетчер реакций</h1>
+
+  <nav>
+    <a href="index.html">Главная</a>
+    <a href="catalog.html">Каталог</a>
+    <a href="catalog.html?category=phones">Каталог: телефоны</a>
+    <a href="product-1.html">Товар 1</a>
+    <a href="product-2.html">Товар 2</a>
+    <a href="product-9.html">Товар 9 (нет, гард не пустит)</a>
+  </nav>
+
+  <p>Один и тот же <code>routes.js</code> подключён на всех страницах. По текущему URL
+     роутер выбирает, какие замыкания выполнить. Реакции этой страницы и журнал событий — ниже.</p>
+
+  <h2>Журнал реакций</h2>
+  <pre id="log"></pre>
+</body>
+</html>
