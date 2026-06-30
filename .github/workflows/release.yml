@@ -111,9 +111,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Select npm registry
+        id: registry
+        shell: bash
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${NPM_TOKEN:-}" ]; then
+            echo "url=https://registry.npmjs.org" >> "$GITHUB_OUTPUT"
+            echo "Публикуем в npmjs.org
+          else
+            echo "url=https://npm.pkg.github.com" >> "$GITHUB_OUTPUT"
+            echo "Публикуем в GitHub Packages"
+          fi
+
       - uses: actions/setup-node@v4
         with:
-          registry-url: 'https://npm.pkg.github.com'
+          registry-url: ${{ steps.registry.outputs.url }}
 
       - name: Build
         if: ${{ env.BUILD_COMMAND != '' }}
@@ -123,7 +138,18 @@ jobs:
           eval "$BUILD_COMMAND"
 
       - name: Override npm auth for publish
-        run: sed -i 's|//npm.pkg.github.com/:_authToken=.*|//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}|' .npmrc
+        shell: bash
+        env:
+          PUBLISH_TOKEN: ${{ secrets.NPM_TOKEN || secrets.GITHUB_TOKEN }}
+          REGISTRY_URL: ${{ steps.registry.outputs.url }}
+        run: |
+          set -euo pipefail
+          HOST="${REGISTRY_URL#https://}"
+          {
+            echo "registry=${REGISTRY_URL}/"
+            echo "//${HOST}/:_authToken=${PUBLISH_TOKEN}"
+            echo "always-auth=true"
+          } >> .npmrc
 
       - name: Set version from tag
         shell: bash
@@ -140,7 +166,19 @@ jobs:
           echo "Tag $TAG -> package version $VERSION"
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
-      - run: npm publish
+      - name: Publish
+        shell: bash
+        env:
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          set -euo pipefail
+          if [ "$REPO_PRIVATE" = "true" ]; then
+            ACCESS="restricted"
+          else
+            ACCESS="public"
+          fi
+          echo "npm publish --access $ACCESS"
+          npm publish --access "$ACCESS"
 
   docker-publish:
     needs: [get-branch, release]

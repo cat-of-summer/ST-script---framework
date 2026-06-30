@@ -26,8 +26,8 @@
     "prepack": "node scripts/build.mjs"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
-    "access": "restricted"
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
   },
   "devDependencies": {
     "esbuild": "^0.24.0"
