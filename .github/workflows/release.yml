@@ -16,7 +16,23 @@ permissions:
   packages: write
 
 jobs:
+  await-ci:
+    if: ${{ github.event_name == 'push' }}   # только тег; на workflow_dispatch пропуск
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for CI (ci-cd workflow)
+        uses: lewagon/wait-on-check-action@v1.8.0
+        with:
+          ref: ${{ github.ref }}
+          check-regexp: '^ci$'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          allowed-conclusions: success,skipped
+          wait-interval: 15
+          fail-on-no-checks: false
+
   prepare:
+    needs: [await-ci]
+    if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}

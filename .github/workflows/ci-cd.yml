@@ -3,6 +3,7 @@ name: ci/cd
 on:
   push:
     branches: ['**']
+    tags: ['v*']
   pull_request: {}
   workflow_dispatch:
     inputs:
@@ -16,7 +17,6 @@ on:
         required: false
         type: string
         default: 'false'
-  create:
 
 permissions:
   contents: read
@@ -89,8 +89,10 @@ jobs:
           case "$EVENT" in
             workflow_dispatch) ACTIVE=true ;;
             pull_request)      PR=true ;;
-            push)   [ "$REF_TYPE" = "branch" ] && [ "$ACTION_TRIGGER" = "PUSH" ]    && ACTIVE=true || true ;;
-            create) [ "$REF_TYPE" = "tag" ]    && [ "$ACTION_TRIGGER" = "RELEASE" ] && ACTIVE=true || true ;;
+            push)
+              if [ "$REF_TYPE" = "branch" ] && [ "$ACTION_TRIGGER" = "PUSH" ];    then ACTIVE=true; fi
+              if [ "$REF_TYPE" = "tag" ]    && [ "$ACTION_TRIGGER" = "RELEASE" ]; then ACTIVE=true; fi
+              ;;
           esac
 
           HAVE_CI=false
@@ -117,7 +119,7 @@ jobs:
               SCOPE="none"
             elif [ "$EVENT" = "workflow_dispatch" ]; then
               SCOPE="selective"; COMMITS="$INPUT_COMMITS"
-            elif [ "$EVENT" = "create" ]; then
+            elif [ "$EVENT" = "push" ] && [ "$REF_TYPE" = "tag" ]; then
               SCOPE="full"
             elif [ "$EVENT" = "push" ]; then
               if [ "$DEPLOY_LAST_COMMITS" = "true" ]; then
