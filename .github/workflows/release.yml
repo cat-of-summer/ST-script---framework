@@ -1,32 +1,57 @@
 name: release
 
 on:
-  create:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Тег для (пере)публикации, например v1.2.3'
+        required: true
+        type: string
 
 permissions:
   contents: write
   packages: write
 
 jobs:
-  get-branch:
-    if: ${{ github.ref_type == 'tag' }}
+  prepare:
     runs-on: ubuntu-latest
     outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
       branch: ${{ steps.find-branch.outputs.branch }}
     steps:
+      - name: Resolve & validate tag
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+(\.[0-9]+)*$ ]]; then
+            echo "::error::Tag '$TAG' is not a v-version tag (expected v#, v#.#, v#.#.#)." >&2
+            exit 1
+          fi
+          echo "Resolved tag: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ steps.resolve.outputs.tag }}
       - id: find-branch
         run: |
-          BRANCH=$(git branch -r --contains ${{ github.sha }} | grep -v HEAD | head -1 | sed 's/.*origin\///')
+          BRANCH=$(git branch -r --contains "$(git rev-parse HEAD)" | grep -v HEAD | head -1 | sed 's/.*origin\///')
           echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
 
   release:
-    needs: get-branch
+    needs: prepare
     runs-on: ubuntu-latest
 
-    environment: ${{ needs.get-branch.outputs.branch }}
+    environment: ${{ needs.prepare.outputs.branch }}
 
     outputs:
       publish_method: ${{ vars.PUBLISH_METHOD }}
@@ -37,6 +62,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Build
         if: ${{ env.BUILD_COMMAND != '' }}
@@ -91,44 +118,29 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: Release ${{ needs.prepare.outputs.tag }}
           generate_release_notes: true
           files: ${{ steps.stage.outputs.files }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   npm-publish:
-    needs: [get-branch, release]
+    needs: [prepare, release]
     if: ${{ needs.release.outputs.publish_method == 'npm' }}
     runs-on: ubuntu-latest
 
-    environment: ${{ needs.get-branch.outputs.branch }}
+    environment: ${{ needs.prepare.outputs.branch }}
 
     env:
       BUILD_COMMAND: ${{ vars.BUILD_COMMAND }}
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Select npm registry
-        id: registry
-        shell: bash
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -n "${NPM_TOKEN:-}" ]; then
-            echo "url=https://registry.npmjs.org" >> "$GITHUB_OUTPUT"
-            echo "Публикуем в npmjs.org"
-          else
-            echo "url=https://npm.pkg.github.com" >> "$GITHUB_OUTPUT"
-            echo "Публикуем в GitHub Packages"
-          fi
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - uses: actions/setup-node@v4
-        with:
-          registry-url: ${{ steps.registry.outputs.url }}
 
       - name: Build
         if: ${{ env.BUILD_COMMAND != '' }}
@@ -137,25 +149,27 @@ jobs:
           set -euo pipefail
           eval "$BUILD_COMMAND"
 
-      - name: Override npm auth for publish
+      - name: Write .npmrc auth
         shell: bash
         env:
-          PUBLISH_TOKEN: ${{ secrets.NPM_TOKEN || secrets.GITHUB_TOKEN }}
-          REGISTRY_URL: ${{ steps.registry.outputs.url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
-          HOST="${REGISTRY_URL#https://}"
           {
-            echo "registry=${REGISTRY_URL}/"
-            echo "//${HOST}/:_authToken=${PUBLISH_TOKEN}"
+            echo "//npm.pkg.github.com/:_authToken=${GH_TOKEN}"
+            if [ -n "${NPM_TOKEN:-}" ]; then
+              echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}"
+            fi
             echo "always-auth=true"
           } >> .npmrc
 
       - name: Set version from tag
         shell: bash
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${{ github.ref_name }}"
           if [[ ! "$TAG" =~ ^v([0-9]+(\.[0-9]+)*)$ ]]; then
             echo "::error::Tag '$TAG' is not a version tag (expected v#, v#.#, v#.#.#)." >&2
             exit 1
@@ -166,7 +180,7 @@ jobs:
           echo "Tag $TAG -> package version $VERSION"
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
-      - name: Publish
+      - name: Publish to GitHub Packages
         shell: bash
         env:
           REPO_PRIVATE: ${{ github.event.repository.private }}
@@ -177,15 +191,48 @@ jobs:
           else
             ACCESS="public"
           fi
-          echo "npm publish --access $ACCESS"
-          npm publish --access "$ACCESS"
+          PKG=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          URL="https://npm.pkg.github.com"
+          if npm view "$PKG@$VERSION" version --registry "$URL" >/dev/null 2>&1; then
+            echo "$PKG@$VERSION уже есть в GitHub Packages — пропускаем"
+          else
+            echo "npm publish --registry $URL --access $ACCESS"
+            npm publish --registry "$URL" --access "$ACCESS"
+          fi
+
+      - name: Publish to npmjs.org
+        shell: bash
+        env:
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NPM_TOKEN:-}" ]; then
+            echo "NPM_TOKEN не задан — пропускаем публикацию в npmjs.org"
+            exit 0
+          fi
+          if [ "$REPO_PRIVATE" = "true" ]; then
+            ACCESS="restricted"
+          else
+            ACCESS="public"
+          fi
+          PKG=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          URL="https://registry.npmjs.org"
+          if npm view "$PKG@$VERSION" version --registry "$URL" >/dev/null 2>&1; then
+            echo "$PKG@$VERSION уже есть в npmjs.org — пропускаем"
+          else
+            echo "npm publish --registry $URL --access $ACCESS"
+            npm publish --registry "$URL" --access "$ACCESS"
+          fi
 
   docker-publish:
-    needs: [get-branch, release]
+    needs: [prepare, release]
     if: ${{ needs.release.outputs.publish_method == 'docker' }}
     runs-on: ubuntu-latest
 
-    environment: ${{ needs.get-branch.outputs.branch }}
+    environment: ${{ needs.prepare.outputs.branch }}
 
     env:
       DOCKER_REGISTRY: ${{ vars.DOCKER_REGISTRY || 'ghcr.io' }}
@@ -196,6 +243,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Validate Dockerfile
         shell: bash
@@ -220,7 +269,7 @@ jobs:
           set -euo pipefail
           IMAGE="$(echo "${DOCKER_REGISTRY}/${DOCKER_IMAGE}" | tr '[:upper:]' '[:lower:]')"
 
-          TAG="${{ github.ref_name }}"
+          TAG="${{ needs.prepare.outputs.tag }}"
           if [[ ! "$TAG" =~ ^v?([0-9]+(\.[0-9]+)*)$ ]]; then
             echo "::error::Tag '$TAG' is not a version tag (expected v#, v#.#, v#.#.#)." >&2
             exit 1
@@ -251,11 +300,11 @@ jobs:
             ${{ steps.meta.outputs.image }}:latest
 
   packagist-publish:
-    needs: [get-branch, release]
+    needs: [prepare, release]
     if: ${{ needs.release.outputs.publish_method == 'packagist' }}
     runs-on: ubuntu-latest
 
-    environment: ${{ needs.get-branch.outputs.branch }}
+    environment: ${{ needs.prepare.outputs.branch }}
 
     steps:
       - name: Publish to Packagist (update; create on first publish)
