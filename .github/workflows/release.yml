@@ -120,7 +120,7 @@ jobs:
           set -euo pipefail
           if [ -n "${NPM_TOKEN:-}" ]; then
             echo "url=https://registry.npmjs.org" >> "$GITHUB_OUTPUT"
-            echo "Публикуем в npmjs.org
+            echo "Публикуем в npmjs.org"
           else
             echo "url=https://npm.pkg.github.com" >> "$GITHUB_OUTPUT"
             echo "Публикуем в GitHub Packages"
