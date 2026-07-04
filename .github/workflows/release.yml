@@ -4,12 +4,7 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Тег для (пере)публикации, например v1.2.3'
-        required: true
-        type: string
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -43,11 +38,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${{ github.ref_name }}"
+          if [ "${{ github.ref_type }}" != "tag" ]; then
+            echo "::error::Запускать нужно на теге: Run workflow → выбрать тег vX.Y.Z." >&2
+            exit 1
           fi
+          TAG="${{ github.ref_name }}"
           if [[ ! "$TAG" =~ ^v[0-9]+(\.[0-9]+)*$ ]]; then
             echo "::error::Tag '$TAG' is not a v-version tag (expected v#, v#.#, v#.#.#)." >&2
             exit 1
@@ -60,8 +55,8 @@ jobs:
           ref: ${{ steps.resolve.outputs.tag }}
       - id: find-branch
         run: |
-          BRANCH=$(git branch -r --contains "$(git rev-parse HEAD)" | grep -v HEAD | head -1 | sed 's/.*origin\///')
-          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
+          BRANCH=$(git branch -r --contains "${{ github.sha }}" | grep -v HEAD | head -1 | sed 's#.*origin/##' | tr -d '[:space:]')
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
 
   release:
     needs: prepare
