@@ -19,7 +19,7 @@ export default class Core {
         return objects.reduce(merge, {});
     }
 
-    static generate_unique_prefix(params) {
+    static getRandomChars(params = {}) {
         params = {
             characters: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
             length: 16,
@@ -27,9 +27,27 @@ export default class Core {
             ...params,
         };
 
-        return [...Array(params.length)].map(_ =>
-            params.characters[Math.random() * params.characters.length | 0]
-          ).join('');
+        return Array.from(crypto.getRandomValues(new Uint8Array(params.length)), b =>
+            params.characters[b % params.characters.length]
+        ).join('');
+    }
+
+    static uuid(version = 7) {
+        let data = crypto.getRandomValues(new Uint8Array(16));
+
+        if (version === 4) {
+            data[6] = (data[6] & 0x0f) | 0x40;
+        } else {
+            for (let i = 0; i < 6; i++)
+                data[i] = Number((BigInt(Date.now()) >> BigInt(40 - i * 8)) & 0xffn);
+
+            data[6] = (data[6] & 0x0f) | 0x70;
+        }
+
+        data[8] = (data[8] & 0x3f) | 0x80;
+
+        let hex = Array.from(data, b => b.toString(16).padStart(2, '0')).join('');
+        return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
     }
 
     static fetch(params) {
