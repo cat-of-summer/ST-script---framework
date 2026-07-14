@@ -1,19 +1,23 @@
 // Universal JS build script (esbuild).
 //
-// Every `src/**/index.js` is an entry ("bundle"). Its folder path relative to
-// src/ is the bundle name (`src/index.js` → "index"). Any path segment starting
-// with "_" is shared content (a partial / partials folder) and is never treated
-// as an entry. For each bundle two minified outputs are produced:
+// Every nested `src/<name>/index.js` is an entry ("bundle"). Its folder path
+// relative to src/ is the bundle name (`src/modal/index.js` → "modal"). The
+// top-level `src/index.js` aggregate is NOT built — consumers import specific
+// modules. Any path segment starting with "_" is shared content (a partial /
+// partials folder) and is never treated as an entry. For each bundle two
+// minified outputs are produced:
 //
 //   dist/<name>.esm.min.js  — ES module  (import / npm / <script type="module">)
 //   dist/<name>.min.js      — IIFE global (CDN <script defer>); the module's
-//                             default export is exposed as window.<lastSegment>.
+//                             default export is exposed as window.<ExportName>,
+//                             where <ExportName> is the name of the class in the
+//                             source (`export default class Modal` → window.Modal).
 //
 // Drop a new `src/<name>/index.js` and it is picked up automatically — no edits
 // here needed. Run with `--watch` to rebuild on change.
 
 import * as esbuild from 'esbuild';
-import { readdirSync, mkdirSync, rmSync } from 'node:fs';
+import { readdirSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 const SRC = 'src';
@@ -29,13 +33,27 @@ function findEntries(dir = SRC) {
       entries.push(...findEntries(full));
     } else if (item.name === 'index.js') {
       const rel = relative(SRC, dir).split(sep).join('/');
-      entries.push({ name: rel === '' ? 'index' : rel, entry: full });
+      if (rel === '') continue; // skip the top-level aggregate — not a bundle
+      entries.push({ name: rel, entry: full });
     }
   }
   return entries;
 }
 
-const globalNameFor = (name) => name.split('/').pop();
+// Pick the IIFE global name from the module's own `export default`, so
+// `window.<Name>` matches the class name in the source (`Modal`, `st_mask`, …).
+// Falls back to the capitalized last path segment when the default export is
+// anonymous (e.g. `export default { … }`).
+function globalNameFor(name, entry) {
+  const src = readFileSync(entry, 'utf8');
+  const m =
+    src.match(/export\s+default\s+(?:async\s+)?(?:class|function\*?)\s+([A-Za-z_$][\w$]*)/) ||
+    src.match(/export\s+default\s+([A-Za-z_$][\w$]*)\s*;/) ||
+    src.match(/export\s*\{[^}]*?\b([A-Za-z_$][\w$]*)\s+as\s+default\b[^}]*\}/);
+  if (m) return m[1];
+  const seg = name.split('/').pop();
+  return seg.charAt(0).toUpperCase() + seg.slice(1);
+}
 
 async function buildAll() {
   rmSync(OUT, { recursive: true, force: true });
@@ -61,7 +79,7 @@ async function buildAll() {
 
     // IIFE global — for a plain CDN <script defer>. Unwrap the default export
     // so `window.<lastSegment>` is the class itself, not the { default } object.
-    const g = globalNameFor(name);
+    const g = globalNameFor(name, entry);
     await esbuild.build({
       entryPoints: [entry],
       outfile: `${OUT}/${name}.min.js`,

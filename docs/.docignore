@@ -193,3 +193,5 @@ __pycache__/
 .vscode/
 .idea/
 bower_components/
+.npmrc
+LICENSE
