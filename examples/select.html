@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Select — кастомный дропдаун поверх нативного &lt;select&gt;</title>
 
-  <!-- IIFE / global build (работает по file://, без CORS). Глобал: window.select -->
+  <!-- IIFE / global build (работает по file://, без CORS). Глобал: window.Select -->
   <script defer src="../dist/select.min.js"></script>
 
   <style>
@@ -80,7 +80,7 @@
   <script>
     // defer-скрипт уже выполнился к DOMContentLoaded → window.select доступен.
     window.addEventListener('DOMContentLoaded', () => {
-      const Select = window.select;
+      const Select = window.Select;
 
       // 1. Одиночный. before_change возвращает false → «Синий» выбрать нельзя.
       new Select({

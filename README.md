@@ -9,19 +9,19 @@ two flavours per module:
 
 | Module                | Global / element    | Notes                                            |
 | --------------------- | ------------------- | ------------------------------------------------ |
-| `st_modal`            | `window.st_modal`   | Modal windows.                                   |
+| `st_modal`            | `window.Modal`      | Modal windows.                                   |
 | `st_typograf`         | `window.st_typograf`| Typography fixer.                                |
-| `st_cookie`           | `window.st_cookie`  | Cookie helpers.                                  |
+| `st_cookie`           | `window.Cookie`     | Cookie helpers.                                  |
 | `st_system`           | `window.st_system`  | Utilities (`merge`, `generate_*`).               |
 | `st_observer`         | `window.st_observer`| IntersectionObserver wrapper.                    |
-| `toggle`              | `window.toggle`     | State toggler (accordions, switches, hover-menus).|
-| `select`              | `window.select`     | Custom `<select>` dropdown (hooks, multiple, hover).|
-| `st_mask`             | `window.st_mask`    | Input masks.                                      |
-| `uploader`            | `window.uploader`   | File uploader.                                   |
+| `toggle`              | `window.Toggle`     | State toggler (accordions, switches, hover-menus).|
+| `select`              | `window.Select`     | Custom `<select>` dropdown (hooks, multiple, hover).|
+| `mask`                | `window.Mask`       | Input masks (телефон, дата, карта, ИНН, …).       |
+| `uploader`            | `window.Uploader`   | File uploader.                                   |
 | `st_validator`        | `window.st_validator`| Form/field validation.                          |
 | `st_button_widget`    | `window.st_button_widget`| Floating button widget.                     |
 | `st_links_widget`     | `window.st_links_widget`| Links widget.                                |
-| `loader`              | `window.loader`     | Ajax list loader (cards: подгрузка/фильтр/сортировка) via `Core.fetch`. |
+| `loader`              | `window.Loader`     | Ajax list loader (cards: подгрузка/фильтр/сортировка) via `Core.fetch`. |
 | `st_app`              | `<st-app>` element  | **Web Component** — `<script defer>` only (self-registers). |
 | `st_app/form`         | `window.form`       | Form app **config object** — register with `App.create(form)`; no `st_app` bundled. |
 

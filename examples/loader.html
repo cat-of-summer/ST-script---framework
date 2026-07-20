@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Loader — ajax-список: фильтр / сортировка / подгрузка (HTML + JSON)</title>
 
-  <!-- IIFE / global build (работает по file://, без сервера). Глобал: window.loader -->
+  <!-- IIFE / global build (работает по file://, без сервера). Глобал: window.Loader -->
   <script defer src="../dist/loader.min.js"></script>
 
   <style>
@@ -83,7 +83,7 @@
 
   <script>
   window.addEventListener('DOMContentLoaded', () => {
-    const Loader = window.loader;            // default-export класса (IIFE-глобал)
+    const Loader = window.Loader;            // default-export класса (IIFE-глобал)
     const PER = 6;
 
     // --- демо-данные (вместо БД) ---

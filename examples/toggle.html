@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Toggle — аккордеон / переключатель / hover-меню</title>
 
-  <!-- IIFE / global build (работает по file://, без CORS). Глобал: window.toggle -->
+  <!-- IIFE / global build (работает по file://, без CORS). Глобал: window.Toggle -->
   <script defer src="../dist/toggle.min.js"></script>
 
   <style>
@@ -124,7 +124,7 @@
   <script>
     // defer-скрипт уже выполнился к DOMContentLoaded → window.toggle доступен.
     window.addEventListener('DOMContentLoaded', () => {
-    const Toggle = window.toggle;
+    const Toggle = window.Toggle;
 
     // 1. Аккордеон. Группировки «из коробки» нет — закрываем соседей в on_activate.
     const accordion = new Toggle({

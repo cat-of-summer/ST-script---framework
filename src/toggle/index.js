@@ -1,4 +1,4 @@
-import { elements, find, own } from '../_traits/hasInstanceSymbol.js';
+import { elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
 
 
 export default class Toggle {
@@ -64,6 +64,11 @@ export default class Toggle {
 
         for (let trigger of elements(this.#params.trigger)) {
             own(trigger, this);
+            expose(trigger, {
+                toggle:     () => this.toggle(trigger),
+                activate:   () => this.activate(trigger),
+                deactivate: () => this.deactivate(trigger)
+            });
             init(trigger);
             this.#targets(trigger).forEach(init);
 

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mask — демо всех масок</title>
+
+    <!-- IIFE / global build (работает по file://, без CORS). Глобал: window.Mask -->
+    <script defer src="../dist/mask.min.js"></script>
+
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 40px; max-width: 900px; }
+        form { display: grid; grid-template-columns: 220px 1fr; gap: 10px 16px; align-items: center; }
+        label { text-align: right; color: #444; font-size: 14px; }
+        input { padding: 6px 10px; font: inherit; border: 1px solid #ccc; border-radius: 6px; }
+        input[is_complete="true"]  { border-color: #2a2; background: #f2fff2; }
+        input[is_complete="false"][progress]:not([progress="0"]) { border-color: #c33; }
+        h2 { margin-top: 40px; }
+        ol li { margin: 6px 0; }
+        button { grid-column: 2; justify-self: start; padding: 8px 20px; font: inherit; }
+    </style>
+</head>
+<body>
+
+<h1>Mask — демо</h1>
+
+<form action="/" method="GET">
+    <label>Телефон РФ (8 → +7, доб.)</label> <input name="phone" type="tel">
+    <label>Телефон (страна: <b id="country">?</b>)</label> <input name="intl" type="tel">
+    <label>Телефон по выбору страны</label>
+    <span>
+        <select id="country-select">
+            <option value="ru">🇷🇺 Россия</option>
+            <option value="by">🇧🇾 Беларусь</option>
+            <option value="kz">🇰🇿 Казахстан</option>
+            <option value="de">🇩🇪 Германия</option>
+        </select>
+        <input name="by_select" type="tel">
+    </span>
+    <label>Документ (подмаска из события: <b id="doc-kind">?</b>)</label> <input name="doc">
+    <label>Дата (автодополнение, ДД.ММ.ГГГГ)</label> <input name="date" inputmode="numeric">
+    <label>Дата (блоки изолированы, flow: false)</label> <input name="date2" inputmode="numeric">
+    <label>Дата (перезапись блока, rewrite: true)</label> <input name="date3" inputmode="numeric">
+    <label>Дата (каретка в конце блока, caret: 'hide')</label> <input name="date4" inputmode="numeric">
+    <label>Время</label>                     <input name="time" inputmode="numeric">
+    <label>Дата и время [опц.]</label>       <input name="datetime" inputmode="numeric">
+    <label>Email</label>                     <input name="email" type="text">
+    <label>URL</label>                       <input name="url" type="text">
+    <label>IPv4</label>                      <input name="ipv4" inputmode="decimal">
+    <label>IPv6</label>                      <input name="ipv6">
+    <label>MAC-адрес</label>                 <input name="mac">
+    <label>UUID</label>                      <input name="uuid">
+    <label>Банковская карта (16–19/Amex)</label> <input name="card" inputmode="numeric">
+    <label>CVV/CVC</label>                   <input name="cvv" inputmode="numeric">
+    <label>Срок действия карты</label>       <input name="expiry" inputmode="numeric">
+    <label>Паспорт РФ</label>                <input name="passport" inputmode="numeric">
+    <label>ИНН (10/12 — сам переключается)</label> <input name="inn" inputmode="numeric">
+    <label>СНИЛС</label>                     <input name="snils" inputmode="numeric">
+    <label>ОГРН / ОГРНИП</label>             <input name="ogrn" inputmode="numeric">
+    <label>БИК</label>                       <input name="bik" inputmode="numeric">
+    <label>Почтовый индекс</label>           <input name="zip" inputmode="numeric">
+    <label>VIN</label>                       <input name="vin">
+    <label>Госномер РФ (лат → кир)</label>   <input name="plate">
+    <label>GPS-координаты</label>            <input name="gps">
+    <label>Цена (разряды, скрытая каретка)</label> <input name="price" inputmode="numeric">
+    <button type="submit">Отправить</button>
+</form>
+
+<h2>Чек-лист ручной проверки</h2>
+<ol>
+    <li>Набор в середине строки: поставить каретку в середину даты и печатать — хвост переформатируется, каретка на месте.</li>
+    <li>Backspace перескакивает разделители («12.|» → удаляется «2»); в телефоне Backspace по «+7» убирает его целиком.</li>
+    <li>Delete удаляет только следующий пользовательский символ.</li>
+    <li>Выделить диапазон и печатать/вставлять — замена выделенного.</li>
+    <li>Вставить в телефон «тел: 8 (912) 345-67-89» — мусор отфильтруется, 8 станет +7.</li>
+    <li>Вставка в середину и поверх выделения.</li>
+    <li>Автозаполнение браузера (сохранённый телефон/адрес) — значение прогоняется через маску.</li>
+    <li>Дата: набрать «4» — станет «04»; месяц «3» — «03». Набрать 39 или 19 в месяце не выйдет: второй разряд ограничен (00, 13–19, 32–39 невозможны).</li>
+    <li>Цена: разряды растут справа (1 234 567 ₽), Backspace перегруппировывает, вставка «цена: 1 234 567 руб» вытягивает цифры; каретка скрыта.</li>
+    <li>Обособленные части даты: кликнуть в ГГГГ при пустом ММ и печатать — заполняется только год; Backspace стирает только из года.</li>
+    <li>Delete идёт дальше по маске: очистив ячейку, следующее нажатие очищает ближайшую занятую справа.</li>
+    <li>Вторая дата (flow: false): «1234» заполняет только ДД, точка открывает ММ; Backspace в начале ГГГГ не трогает ММ.</li>
+    <li>Третья дата (rewrite: true): набрать «12312» — получится 12 → 3 (затёрло) → 31 → 2; клик в середину блока и набор перезаписывают блок с начала.</li>
+    <li>Четвёртая дата (caret: 'hide'): кликнуть в середину блока — каретка встанет в конец этого блока; внутрь блока встать нельзя, но rewrite и изоляция блоков работают как обычно.</li>
+    <li>API на самих элементах: в консоли <code>$0.raw()</code>, <code>$0.state()</code>, <code>$0.set('…')</code>, <code>$0.clear()</code> для любого поля с маской.</li>
+    <li>Телефон по выбору страны: сменить страну в select — маска переключится через set_mask.</li>
+    <li>Документ: первый символ решает вид маски прямо в событии before_input (8 → телефон, 4 → карта, буква → паспорт).</li>
+    <li>Телефон-страны: набрать «375…» — подтянется маска BY (индикатор сменится), «8…» — RU.</li>
+    <li>Дата-время: после полной даты набрать цифры — появится блок « 14:30». Телефон: лишние цифры откроют « доб.».</li>
+    <li>Поле «Цена» (caret: 'hide'): каретки не видно, клик в середину суммы прижимает ввод к концу. Двойной клик по числу выделяет значение целиком — дальше либо заменить всё, либо стирать с конца; вырезать середину нельзя.</li>
+    <li>Дата — placeholder: 'always' (скелет «ДД.ММ.ГГГГ»), остальные — placeholder: true.</li>
+    <li>Сброс формы (кнопка reset или form.reset()) очищает поля и атрибуты.</li>
+    <li>ИНН: 11-я цифра переключает маску 10 → 12 (атрибут mask_id).</li>
+    <li>Мобильные: Android Chrome (Gboard) и iOS Safari — набор, backspace, вставка.</li>
+</ol>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+
+        const upper = c => c.toUpperCase();
+        const hex   = '{{[0-9a-fA-F]}}';
+
+        // Телефон РФ: 8 → +7, вставка «+7…», необязательный добавочный
+        new Mask({
+            target: 'input[name=phone]',
+            mask: [
+                '{8=>+7} (000) 000-00-00[ доб. {0;1-5}]',
+                '+7 (000) 000-00-00[ доб. {0;1-5}]'
+            ],
+            on_complete: (input, state) => console.log('телефон заполнен:', state.raw)
+        });
+
+        // Мульти-страны: словарь именованных масок — по первым цифрам подтягивается
+        // самая подходящая, ключ приходит в mask_id и событие on_mask_change
+        new Mask({
+            target: 'input[name=intl]',
+            mask: {
+                ru: ['{8=>+7} (000) 000-00-00', '+7 (000) 000-00-00'],
+                by: '+375 (00) 000-00-00',
+                kz: '+7 (700) 000-00-00',
+                de: '+49 (000) 000-0000'
+            },
+            on_mask_change: (input, state) =>
+                document.getElementById('country').textContent = state.mask_id,
+            on_input: (input, state) =>
+                document.getElementById('country').textContent = state.mask_id
+        });
+
+        // Дата: полный скелет, автодополнение первого разряда и запрет неверного второго.
+        // Автодополнение — только для однозначных цифр: 4 не может начинать день (40+),
+        // значит это 04. Цифры 1-3 неоднозначны (1 → 01/10..19/31) — ждём второй разряд,
+        // а его уже ограничиваем: 00, 32-39 и 13-19 набрать невозможно
+        const date_fix = (char, { slot, cells }) => {
+            let [day_h, , month_h] = [cells[0], cells[1], cells[2]];
+
+            if (slot == 0 && char > '3') return '0' + char;
+            if (slot == 1 && (day_h == '3' && char > '1' || day_h == '0' && char == '0')) return false;
+            if (slot == 2 && char > '1') return '0' + char;
+            if (slot == 3 && (month_h == '1' && char > '2' || month_h == '0' && char == '0')) return false;
+        };
+
+        new Mask({
+            target: 'input[name=date]',
+            mask: '00.00.0000',
+            filler: 'ДДММГГГГ',
+            placeholder: 'always',
+            fix: date_fix
+        });
+
+        // Изолированные блоки: набор не перетекает между ДД/ММ/ГГГГ (переход — точкой
+        // или кликом), удаление не выходит за границы блока
+        new Mask({
+            target: 'input[name=date2]',
+            mask: '00.00.0000',
+            filler: 'ДДММГГГГ',
+            placeholder: 'always',
+            flow: false
+        });
+
+        // Перезапись блока: ввод всегда начинается с начала блока. Набрав "12312"
+        // в ДД получим 12 → блок полон → 3 затирает его и пишется первым символом
+        new Mask({
+            target: 'input[name=date3]',
+            mask: '00.00.0000',
+            filler: 'ДДММГГГГ',
+            placeholder: 'always',
+            flow: false,
+            rewrite: true
+        });
+
+        // Каретка прижата к концу блока и надёжно скрыта: по блоку кликнуть можно,
+        // но встать в его середину — нет. Изоляция блоков и перезапись работают как обычно
+        new Mask({
+            target: 'input[name=date4]',
+            mask: '00.00.0000',
+            filler: 'ДДММГГГГ',
+            placeholder: 'always',
+            flow: false,
+            rewrite: true,
+            caret: 'hide'
+        });
+
+        // Телефон по выбору страны: select переключает маску через set_mask
+        const COUNTRY_MASKS = {
+            ru: '+7 (000) 000-00-00',
+            by: '+375 (00) 000-00-00',
+            kz: '+7 (700) 000-00-00',
+            de: '+49 (000) 000-0000'
+        };
+
+        const by_select = new Mask({
+            target: 'input[name=by_select]',
+            mask: COUNTRY_MASKS.ru
+        });
+
+        document.getElementById('country-select').addEventListener('change', event => {
+            by_select.set_mask(COUNTRY_MASKS[event.target.value], 'input[name=by_select]');
+            document.querySelector('input[name=by_select]').focus();
+        });
+
+        // Ручное переключение подмаски прямо из события ввода: смотрим первый символ
+        // в before_input и сами выбираем маску документа через set_mask
+        const DOC_MASKS = {
+            phone:    { mask: ['{8=>+7} (000) 000-00-00', '+7 (000) 000-00-00'],
+                        test: c => '78+'.includes(c) },
+            card:     { mask: '0000 0000 0000 0000', test: c => /[1-6]/.test(c) },
+            passport: { mask: 'aa 000000',           test: c => /\p{L}/u.test(c) }
+        };
+
+        const doc = new Mask({
+            target: 'input[name=doc]',
+            mask: '{*;0-}',
+            before_input: (input, edit) => {
+                if (!edit.insert || doc.raw(input)) return;
+
+                let kind = Object.keys(DOC_MASKS).find(k => DOC_MASKS[k].test(edit.insert[0]));
+                if (!kind) return false;
+
+                doc.set_mask(DOC_MASKS[kind].mask, input);
+                document.getElementById('doc-kind').textContent = kind;
+            },
+            on_complete: (input, state) => console.log('документ заполнен:', state.raw)
+        });
+
+        // Время: автодополнение часа
+        new Mask({
+            target: 'input[name=time]',
+            mask: '00:00',
+            fix: (char, { slot }) => slot == 0 && char > '2' ? '0' + char : undefined
+        });
+
+        // Дата и время: время — необязательный блок
+        new Mask({ target: 'input[name=datetime]', mask: '00.00.0000[ 00:00]' });
+
+        // Email и URL — фильтр-режим (позиционная маска тут невозможна)
+        new Mask({
+            target: 'input[name=email]',
+            mask: { filter: /[a-z0-9@._%+-]/i, valid: /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/ }
+        });
+        new Mask({
+            target: 'input[name=url]',
+            mask: { filter: /[\w\-.~:/?#@!$&'()*+,;=%[\]]/, valid: /^https?:\/\/\S+\.\S+$/ }
+        });
+
+        // IPv4: октеты 1–3 цифры; valid добивает complete только для значений 0–255
+        new Mask({
+            target: 'input[name=ipv4]',
+            mask: {
+                pattern: '{0;1-3}.{0;1-3}.{0;1-3}.{0;1-3}',
+                valid: /^((25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(25[0-5]|2[0-4]\d|1?\d?\d)$/
+            }
+        });
+
+        // IPv6: фильтр-режим (из-за сокращения «::» позиционная маска не подходит)
+        new Mask({
+            target: 'input[name=ipv6]',
+            mask: {
+                filter: /[0-9a-f:]/i,
+                valid: /^(([0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|([0-9a-f]{1,4}:)*::([0-9a-f]{1,4}(:[0-9a-f]{1,4})*)?)$/i
+            },
+            prepare: c => c.toLowerCase()
+        });
+
+        // MAC: пары hex через двоеточие, верхний регистр
+        new Mask({
+            target: 'input[name=mac]',
+            mask: `{${hex};2}:{${hex};2}:{${hex};2}:{${hex};2}:{${hex};2}:{${hex};2}`,
+            prepare: upper
+        });
+
+        // UUID: 8-4-4-4-12
+        new Mask({
+            target: 'input[name=uuid]',
+            mask: `{${hex};8}-{${hex};4}-{${hex};4}-{${hex};4}-{${hex};12}`,
+            prepare: c => c.toLowerCase()
+        });
+
+        // Карта: 16–19 цифр или Amex 15
+        new Mask({
+            target: 'input[name=card]',
+            mask: ['0000 0000 0000 0000[ 000]', '0000 000000 00000']
+        });
+
+        new Mask({ target: 'input[name=cvv]', mask: '000[0]', caret: true });
+
+        // Срок карты: клампинг месяца
+        new Mask({
+            target: 'input[name=expiry]',
+            mask: '00/00',
+            fix: (char, { slot, raw }) => {
+                if (slot == 0 && char > '1') return '0' + char;             // месяц: 2 → 02
+                if (slot == 1 && raw[0] == '1' && char > '2') return false; // 13-й месяц не бывает
+            }
+        });
+
+        new Mask({ target: 'input[name=passport]', mask: '00 00 000000' });
+
+        // ИНН: динамический выбор между 10 и 12 цифрами
+        new Mask({ target: 'input[name=inn]', mask: ['0000000000', '000000000000'] });
+
+        new Mask({ target: 'input[name=snils]', mask: '000-000-000 00' });
+        new Mask({ target: 'input[name=ogrn]',  mask: ['0000000000000', '000000000000000'] });
+        new Mask({ target: 'input[name=bik]',   mask: '000000000' });
+        new Mask({ target: 'input[name=zip]',   mask: '000000' });
+
+        // VIN: 17 символов, без I/O/Q, верхний регистр
+        new Mask({
+            target: 'input[name=vin]',
+            mask: '{{{[A-HJ-NPR-Z0-9]}};17}',
+            prepare: upper
+        });
+
+        // Госномер РФ: латиница на клавиатуре превращается в кириллицу
+        const lat2cyr = { A: 'А', B: 'В', E: 'Е', K: 'К', M: 'М', H: 'Н', O: 'О', P: 'Р', C: 'С', T: 'Т', Y: 'У', X: 'Х' };
+        new Mask({
+            target: 'input[name=plate]',
+            mask: '{{[АВЕКМНОРСТУХ]}}000{{{[АВЕКМНОРСТУХ]}};2}{0;2-3}',
+            prepare: c => { c = c.toUpperCase(); return lat2cyr[c] ?? c; }
+        });
+
+        // GPS: необязательный минус, целая и дробная части переменной длины
+        new Mask({
+            target: 'input[name=gps]',
+            mask: '[-]{0;1-2}.{0;1-6}, [-]{0;1-3}.{0;1-6}'
+        });
+
+        // Цена: разряды по три от конца. Функциональная маска пересобирает шаблон под
+        // количество набранных цифр (7 цифр → '0 000 000'), поэтому группы растут справа
+        new Mask({
+            target: 'input[name=price]',
+            caret: 'hide',
+            mask: ({ stream }) => {
+                let n = Math.min((stream.match(/\d/g) ?? []).length, 12) || 1;
+                return '0'.repeat((n - 1) % 3 + 1) + ' 000'.repeat((n - 1) / 3 | 0) + ' ₽';
+            }
+        });
+
+        // Валидация формы по атрибуту is_complete
+        document.querySelector('form').addEventListener('submit', event => {
+            for (let input of event.target.querySelectorAll('input'))
+                if (input.getAttribute("is_complete") == "false" && input.getAttribute("progress") != "0") {
+                    event.preventDefault();
+                    alert(`Поле «${input.name}» заполнено не до конца`);
+                    return;
+                }
+        });
+    });
+</script>
+
+</body>
+</html>

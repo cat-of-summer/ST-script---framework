@@ -4,7 +4,7 @@ export { default as App } from './app/index.js';
 export { default as st_button_widget } from './st_button_widget/index.js';
 export { default as Cookie } from './cookie/index.js';
 export { default as st_links_widget } from './st_links_widget/index.js';
-export { default as st_mask } from './st_mask/index.js';
+export { default as Mask } from './mask/index.js';
 export { default as Modal } from './modal/index.js';
 export { default as st_observer } from './st_observer/index.js';
 export { default as Select } from './select/index.js';

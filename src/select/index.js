@@ -1,4 +1,4 @@
-import { elements, find, own } from '../_traits/hasInstanceSymbol.js';
+import { elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
 
 
 export default class Select {
@@ -11,7 +11,6 @@ export default class Select {
 
     get params() {return this.#params;}
 
-    // Текущие значения по управляемым <select>: multiple → массив, иначе — строка.
     get value() {
         return elements(this.#params.target).map(select => select.multiple
             ? [...select.selectedOptions].map(o => o.value)
@@ -69,7 +68,6 @@ export default class Select {
         this.on_init(this.#params);
     }
 
-    // Расчёт inline-позиции панели опций из location (top/bottom/left/right/center).
     #locate(options) {
         let loc = (this.#params.location || '').toLowerCase().split(/\s+/);
 
@@ -83,8 +81,14 @@ export default class Select {
         });
     }
 
-    // Обернуть один нативный <select> кастомной структурой и навесить поведение.
     #build(select) {
+        own(select, this);
+        expose(select, {
+            open:   () => this.open(select),
+            close:  () => this.close(select),
+            toggle: () => this.toggle(select)
+        });
+
         let container = document.createElement('select-container');
         own(container, this);
         Object.assign(container.style, { position: 'relative', display: 'inline-block' });
@@ -98,7 +102,6 @@ export default class Select {
         Object.assign(options.style, { transition: `all ${this.#params.duration}s` });
         this.#locate(options);
 
-        // Нативный select — держатель значения; визуально скрыт.
         Object.assign(select.style, {
             position: 'absolute', width: '1px', height: '1px',
             overflow: 'hidden', clip: 'rect(0 0 0 0)', clipPath: 'inset(50%)',
@@ -137,7 +140,6 @@ export default class Select {
             });
     }
 
-    // Применить выбор опции: синхронизация нативного select + хуки + change.
     #choose(container, select, option, item) {
         if (this.before_change(option, select) === false) return;
 
@@ -158,7 +160,6 @@ export default class Select {
         if (!select.multiple && this.#params.close_on_select) this.close(container);
     }
 
-    // Отрисовать текст текущего выбора в триггере.
     #render(select, trigger) {
         if (select.multiple)
             trigger.textContent = [...select.selectedOptions].map(o => o.textContent).join(', ');
@@ -204,7 +205,6 @@ export default class Select {
         });
     }
 
-    // Нормализовать произвольный элемент к его <select-container>.
     #resolve = (el) => el?.closest?.('select-container')
         ?? (el?.tagName?.toLowerCase() == 'select' ? el.parentElement : null);
 }

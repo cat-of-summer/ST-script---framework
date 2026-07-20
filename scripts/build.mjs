@@ -40,10 +40,6 @@ function findEntries(dir = SRC) {
   return entries;
 }
 
-// Pick the IIFE global name from the module's own `export default`, so
-// `window.<Name>` matches the class name in the source (`Modal`, `st_mask`, …).
-// Falls back to the capitalized last path segment when the default export is
-// anonymous (e.g. `export default { … }`).
 function globalNameFor(name, entry) {
   const src = readFileSync(entry, 'utf8');
   const m =
@@ -66,7 +62,6 @@ async function buildAll() {
   }
 
   for (const { name, entry } of entries) {
-    // ES module — for `import` (npm bundlers, <script type="module">).
     await esbuild.build({
       entryPoints: [entry],
       outfile: `${OUT}/${name}.esm.min.js`,
@@ -77,8 +72,6 @@ async function buildAll() {
       logLevel: 'warning',
     });
 
-    // IIFE global — for a plain CDN <script defer>. Unwrap the default export
-    // so `window.<lastSegment>` is the class itself, not the { default } object.
     const g = globalNameFor(name, entry);
     await esbuild.build({
       entryPoints: [entry],

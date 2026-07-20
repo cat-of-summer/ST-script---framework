@@ -277,20 +277,17 @@ document.querySelectorAll('st-app[app="form"]').forEach(form => {
 document.querySelectorAll('st-app[app="form"]').forEach(form => {
     form.configure({
         setup() {
-            new st_mask({
-                inputs: form.querySelectorAll('[type="phone"], [type="tel"]'),
-                masks: [
-                    "+{{7}=7} ({3*{\\d}}) {3*{\\d}} - {2*{\\d}} - {2*{\\d}}",
-                    "{{8}=8} ({3*{\\d}}) {3*{\\d}} - {2*{\\d}} - {2*{\\d}}",
-                    "+7 ({3*{\\d}}) {3*{\\d}} - {2*{\\d}} - {2*{\\d}}",
+            new Mask({
+                target: form.querySelectorAll('[type="phone"], [type="tel"]'),
+                mask: [
+                    '{8=>+7} (000) 000-00-00',
+                    '+7 (000) 000-00-00',
                 ],
-                placeholder: true,
-                default_filler: '_',
             });
         },
         validate: {
             '[type="phone"], [type="tel"]': input =>
-                /^\+7\s\(\d{3}\)\s\d{3}\s-\s\d{2}\s-\s\d{2}$/.test(input.value.trim())
+                /^\+7 \(\d{3}\) \d{3}-\d{2}-\d{2}$/.test(input.value.trim())
                     ? ''
                     : 'Неверный формат номера телефона',
         },
