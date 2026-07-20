@@ -113,8 +113,8 @@ export default class Mask {
                 fixed: m.pattern != null && Mask.#is_fixed(nodes),
                 valid: m.valid ? Mask.#no_g(m.valid) : (m.filter ? /./ : null),
                 filler: m.filler ?? base.filler,
-                prepare: m.prepare ?? base.prepare,
-                fix: m.fix ?? base.fix
+                before_char: m.before_char ?? base.before_char,
+                before_slot: m.before_slot ?? base.before_slot
             };
         });
 
@@ -127,12 +127,14 @@ export default class Mask {
         return filler[ordinal] ?? filler[filler.length - 1] ?? '_';
     }
 
-    static #prepare(def, input_string) {
+    static #prepare(def, input_string, ctx) {
         let chars = [...String(input_string ?? '')];
-        if (!def.prepare) return chars;
+        if (!def.before_char) return chars;
+
         return chars.flatMap(char => {
-            let out = def.prepare(char, { input: input_string });
-            return out == null || out === '' ? [] : [...String(out)];
+            let out = def.before_char(ctx?.input, { char });
+            if (out === false || out === '' || out === null) return [];
+            return typeof out == 'string' ? [...out] : [char];
         });
     }
 
@@ -208,8 +210,9 @@ export default class Mask {
                     }
                     let c = s.input[s.ip];
                     if (node.test.test(c)) {
-                        if (def.fix && !no_fix) {
-                            let out = def.fix(c, { slot: ordinal, raw: s.raw, cells: s.cells, node });
+                        if (def.before_slot && !no_fix) {
+                            let out = def.before_slot(s.ctx?.input,
+                                { char: c, slot: ordinal, cells: s.cells, raw: s.raw, node });
                             if (out === false) { s.ip++; continue; }
                             if (typeof out == 'string' && out !== c) {
                                 s.input.splice(s.ip, 1, ...out);
@@ -295,9 +298,10 @@ export default class Mask {
         }
     }
 
-    static run(def, input_string) {
+    static run(def, input_string, ctx) {
         let s = {
-            input: Mask.#prepare(def, input_string),
+            input: Mask.#prepare(def, input_string, ctx),
+            ctx,
             ip: 0,
             stream: '', raw: '', formatted: '', tail: '', ph: '',
             ph_slots: [], units: [], cells: [],
@@ -325,7 +329,7 @@ export default class Mask {
 
         let best = null;
         for (let def of resolved) {
-            let result = Mask.run(def, input_string);
+            let result = Mask.run(def, input_string, ctx);
             if (!best
                 || result.consumed > best.result.consumed
                 || result.consumed == best.result.consumed && result.complete && !best.result.complete)
@@ -389,11 +393,10 @@ export default class Mask {
             rewrite: false,
             caret: true,
 
-            prepare: null,
-            fix: null,
-
             before_init:  () => {},
             on_init:      () => {},
+            before_char:  () => {},
+            before_slot:  () => {},
             before_input: () => {},
             on_input:     () => {},
             before_paste: () => {},
@@ -467,8 +470,8 @@ export default class Mask {
     #base() {
         return {
             filler: this.#params.filler,
-            prepare: this.prepare ?? this.#params.prepare,
-            fix: this.fix ?? this.#params.fix
+            before_char: this.before_char,
+            before_slot: this.before_slot
         };
     }
 
@@ -648,7 +651,7 @@ export default class Mask {
         anchor ??= k < n ? parts[k] : null;
         let crossed = null;
 
-        for (let c of Mask.#prepare(def, insert)) {
+        for (let c of Mask.#prepare(def, insert, { input })) {
             if (k >= n) {
                 if (restart == null) break;
                 k = parts.indexOf(restart);
@@ -689,7 +692,7 @@ export default class Mask {
         let last = cells.reduce((acc, cell, i) => cell != null ? i : acc, -1);
         let stream = cells.slice(0, last + 1).map((cell, i) => cell ?? Mask.#filler(def, i)).join('');
 
-        let pos = Math.min(Mask.run(def, stream.slice(0, k)).stream.length, n);
+        let pos = Math.min(Mask.run(def, stream.slice(0, k), { input }).stream.length, n);
         let caret = pos < n ? slots[pos].fmt : slots[n - 1].fmt + 1;
         if (!flow && insert && pos > 0 && pos < n && parts[pos] != parts[pos - 1])
             caret = slots[pos - 1].fmt + 1;
@@ -774,7 +777,7 @@ export default class Mask {
         st.rendered = text;
 
         if (caret_fmt == null && prefix != null && document.activeElement === input)
-            caret_fmt = Mask.caret_for(result, Mask.run(def, prefix).stream.length);
+            caret_fmt = Mask.caret_for(result, Mask.run(def, prefix, { input }).stream.length);
         if (caret_fmt != null && document.activeElement === input) {
             caret_fmt = Math.min(caret_fmt, text.length);
             input.setSelectionRange(caret_fmt, caret_fmt);

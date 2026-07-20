@@ -97,7 +97,8 @@
 <script>
     document.addEventListener('DOMContentLoaded', () => {
 
-        const upper = c => c.toUpperCase();
+        const upper = (input, { char }) => char.toUpperCase();
+        const lower = (input, { char }) => char.toLowerCase();
         const hex   = '{{[0-9a-fA-F]}}';
 
         // Телефон РФ: 8 → +7, вставка «+7…», необязательный добавочный
@@ -130,7 +131,7 @@
         // Автодополнение — только для однозначных цифр: 4 не может начинать день (40+),
         // значит это 04. Цифры 1-3 неоднозначны (1 → 01/10..19/31) — ждём второй разряд,
         // а его уже ограничиваем: 00, 32-39 и 13-19 набрать невозможно
-        const date_fix = (char, { slot, cells }) => {
+        const date_fix = (input, { char, slot, cells }) => {
             let [day_h, , month_h] = [cells[0], cells[1], cells[2]];
 
             if (slot == 0 && char > '3') return '0' + char;
@@ -144,7 +145,7 @@
             mask: '00.00.0000',
             filler: 'ДДММГГГГ',
             placeholder: 'always',
-            fix: date_fix
+            before_slot: date_fix
         });
 
         // Изолированные блоки: набор не перетекает между ДД/ММ/ГГГГ (переход — точкой
@@ -226,7 +227,7 @@
         new Mask({
             target: 'input[name=time]',
             mask: '00:00',
-            fix: (char, { slot }) => slot == 0 && char > '2' ? '0' + char : undefined
+            before_slot: (input, { char, slot }) => slot == 0 && char > '2' ? '0' + char : undefined
         });
 
         // Дата и время: время — необязательный блок
@@ -258,21 +259,21 @@
                 filter: /[0-9a-f:]/i,
                 valid: /^(([0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|([0-9a-f]{1,4}:)*::([0-9a-f]{1,4}(:[0-9a-f]{1,4})*)?)$/i
             },
-            prepare: c => c.toLowerCase()
+            before_char: lower
         });
 
         // MAC: пары hex через двоеточие, верхний регистр
         new Mask({
             target: 'input[name=mac]',
             mask: `{${hex};2}:{${hex};2}:{${hex};2}:{${hex};2}:{${hex};2}:{${hex};2}`,
-            prepare: upper
+            before_char: upper
         });
 
         // UUID: 8-4-4-4-12
         new Mask({
             target: 'input[name=uuid]',
             mask: `{${hex};8}-{${hex};4}-{${hex};4}-{${hex};4}-{${hex};12}`,
-            prepare: c => c.toLowerCase()
+            before_char: lower
         });
 
         // Карта: 16–19 цифр или Amex 15
@@ -287,9 +288,9 @@
         new Mask({
             target: 'input[name=expiry]',
             mask: '00/00',
-            fix: (char, { slot, raw }) => {
-                if (slot == 0 && char > '1') return '0' + char;             // месяц: 2 → 02
-                if (slot == 1 && raw[0] == '1' && char > '2') return false; // 13-й месяц не бывает
+            before_slot: (input, { char, slot, cells }) => {
+                if (slot == 0 && char > '1') return '0' + char;                 // месяц: 2 → 02
+                if (slot == 1 && cells[0] == '1' && char > '2') return false;   // 13-й месяц не бывает
             }
         });
 
@@ -307,7 +308,7 @@
         new Mask({
             target: 'input[name=vin]',
             mask: '{{{[A-HJ-NPR-Z0-9]}};17}',
-            prepare: upper
+            before_char: upper
         });
 
         // Госномер РФ: латиница на клавиатуре превращается в кириллицу
@@ -315,7 +316,10 @@
         new Mask({
             target: 'input[name=plate]',
             mask: '{{[АВЕКМНОРСТУХ]}}000{{{[АВЕКМНОРСТУХ]}};2}{0;2-3}',
-            prepare: c => { c = c.toUpperCase(); return lat2cyr[c] ?? c; }
+            before_char: (input, { char }) => {
+                char = char.toUpperCase();
+                return lat2cyr[char] ?? char;
+            }
         });
 
         // GPS: необязательный минус, целая и дробная части переменной длины
