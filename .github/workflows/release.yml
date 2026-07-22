@@ -173,7 +173,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.ref }}
-          name: ${{ needs.prepare.outputs.branch }} release ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.pkg_suffix != '' && format('{0} release {1}', needs.prepare.outputs.branch, needs.prepare.outputs.tag) || format('Release {0}', needs.prepare.outputs.tag) }}
           generate_release_notes: true
           files: ${{ steps.stage.outputs.files }}
         env:
@@ -202,11 +202,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Ensure npm CLI supports trusted publishing
-        shell: bash
-        run: npm install -g npm@latest
 
       - name: Build
         if: ${{ env.BUILD_COMMAND != '' }}
@@ -242,26 +237,7 @@ jobs:
           echo "MULTIPLE_PACKAGES: $NAME -> ${NAME}${SUFFIX}"
           npm pkg set name="${NAME}${SUFFIX}"
 
-      - name: Publish to npmjs.org
-        id: npmjs
-        shell: bash
-        env:
-          REPO_PRIVATE: ${{ github.event.repository.private }}
-        run: |
-          set -euo pipefail
-          if [ "$REPO_PRIVATE" = "true" ]; then ACCESS="restricted"; else ACCESS="public"; fi
-          PKG=$(node -p "require('./package.json').name")
-          VERSION=$(node -p "require('./package.json').version")
-          URL="https://registry.npmjs.org"
-          if npm view "$PKG@$VERSION" version --registry "$URL" >/dev/null 2>&1; then
-            echo "$PKG@$VERSION уже есть в npmjs.org — пропускаем"
-          else
-            echo "npm publish --registry $URL --access $ACCESS (trusted publishing / OIDC)"
-            npm publish --registry "$URL" --access "$ACCESS"
-          fi
-
       - name: Setup Node for GitHub Packages
-        if: ${{ !cancelled() && steps.npmjs.conclusion != 'skipped' }}
         uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -270,7 +246,6 @@ jobs:
 
       - name: Publish to GitHub Packages
         id: gpr
-        if: ${{ !cancelled() && steps.npmjs.conclusion != 'skipped' }}
         shell: bash
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -286,6 +261,35 @@ jobs:
             echo "$PKG@$VERSION уже есть в GitHub Packages — пропускаем"
           else
             echo "npm publish --registry $URL --access $ACCESS"
+            npm publish --registry "$URL" --access "$ACCESS"
+          fi
+
+      - name: Setup Node for npmjs.org
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Ensure npm CLI supports trusted publishing
+        shell: bash
+        run: npm install -g npm@latest
+
+      - name: Publish to npmjs.org
+        id: npmjs
+        continue-on-error: true
+        shell: bash
+        env:
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          set -euo pipefail
+          if [ "$REPO_PRIVATE" = "true" ]; then ACCESS="restricted"; else ACCESS="public"; fi
+          PKG=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          URL="https://registry.npmjs.org"
+          if npm view "$PKG@$VERSION" version --registry "$URL" >/dev/null 2>&1; then
+            echo "$PKG@$VERSION уже есть в npmjs.org — пропускаем"
+          else
+            echo "npm publish --registry $URL --access $ACCESS (trusted publishing / OIDC)"
             npm publish --registry "$URL" --access "$ACCESS"
           fi
 
