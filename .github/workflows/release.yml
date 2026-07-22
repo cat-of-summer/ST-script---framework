@@ -210,6 +210,10 @@ jobs:
           set -euo pipefail
           eval "$BUILD_COMMAND"
 
+      - name: Drop committed .npmrc
+        shell: bash
+        run: rm -f .npmrc"
+
       - name: Set version from tag
         shell: bash
         env:
@@ -261,7 +265,12 @@ jobs:
             echo "$PKG@$VERSION уже есть в GitHub Packages — пропускаем"
           else
             echo "npm publish --registry $URL --access $ACCESS"
-            npm publish --registry "$URL" --access "$ACCESS"
+            if ! npm publish --registry "$URL" --access "$ACCESS"; then
+              echo "::group::npm debug log"
+              cat "$(ls -t ~/.npm/_logs/*-debug-*.log 2>/dev/null | head -1)" 2>/dev/null || echo "(debug-лог не найден)"
+              echo "::endgroup::"
+              exit 1
+            fi
           fi
 
       - name: Setup Node for npmjs.org
