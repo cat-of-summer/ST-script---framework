@@ -253,27 +253,47 @@ jobs:
           echo "MULTIPLE_PACKAGES: $NAME -> ${NAME}${SUFFIX}"
           npm pkg set name="${NAME}${SUFFIX}"
 
-      - name: Publish (GitHub Packages + npmjs.org)
+      - name: Publish to npmjs.org
+        id: npmjs
         shell: bash
         env:
           REPO_PRIVATE: ${{ github.event.repository.private }}
         run: |
           set -euo pipefail
-          if [ "$REPO_PRIVATE" = "true" ]; then
-            ACCESS="restricted"
-          else
-            ACCESS="public"
-          fi
+          if [ "$REPO_PRIVATE" = "true" ]; then ACCESS="restricted"; else ACCESS="public"; fi
           PKG=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
-          for URL in https://npm.pkg.github.com https://registry.npmjs.org; do
-            if npm view "$PKG@$VERSION" version --registry "$URL" >/dev/null 2>&1; then
-              echo "$PKG@$VERSION уже есть в $URL — пропускаем"
-            else
-              echo "npm publish --registry $URL --access $ACCESS"
-              npm publish --registry "$URL" --access "$ACCESS"
-            fi
-          done
+          URL="https://registry.npmjs.org"
+          if npm view "$PKG@$VERSION" version --registry "$URL" >/dev/null 2>&1; then
+            echo "$PKG@$VERSION уже есть в npmjs.org — пропускаем"
+          else
+            echo "npm publish --registry $URL --access $ACCESS (trusted publishing / OIDC)"
+            npm publish --registry "$URL" --access "$ACCESS"
+          fi
+
+      - name: Publish to GitHub Packages
+        id: gpr
+        if: ${{ !cancelled() && steps.npmjs.conclusion != 'skipped' }}
+        shell: bash
+        env:
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+          ACTIONS_ID_TOKEN_REQUEST_URL: ''
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
+        run: |
+          set -euo pipefail
+          if [ "$REPO_PRIVATE" = "true" ]; then ACCESS="restricted"; else ACCESS="public"; fi
+          PKG=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          SCOPE="${PKG%%/*}"                       # @owner
+          URL="https://npm.pkg.github.com"
+          npm pkg delete publishConfig.registry >/dev/null 2>&1 || true
+          npm config set "${SCOPE}:registry=${URL}"
+          if npm view "$PKG@$VERSION" version --registry "$URL" >/dev/null 2>&1; then
+            echo "$PKG@$VERSION уже есть в GitHub Packages — пропускаем"
+          else
+            echo "npm publish --registry $URL --access $ACCESS"
+            npm publish --registry "$URL" --access "$ACCESS"
+          fi
 
   docker-publish:
     needs: [prepare, release]
