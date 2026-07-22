@@ -212,7 +212,9 @@ jobs:
 
       - name: Drop committed .npmrc
         shell: bash
-        run: rm -f .npmrc"
+        run: |
+          set -euo pipefail
+          rm -f .npmrc
 
       - name: Set version from tag
         shell: bash
