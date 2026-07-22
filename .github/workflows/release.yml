@@ -215,17 +215,6 @@ jobs:
           set -euo pipefail
           eval "$BUILD_COMMAND"
 
-      - name: Write .npmrc auth
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          {
-            echo "//npm.pkg.github.com/:_authToken=${GH_TOKEN}"
-            echo "always-auth=true"
-          } >> .npmrc
-
       - name: Set version from tag
         shell: bash
         env:
@@ -271,23 +260,28 @@ jobs:
             npm publish --registry "$URL" --access "$ACCESS"
           fi
 
+      - name: Setup Node for GitHub Packages
+        if: ${{ !cancelled() && steps.npmjs.conclusion != 'skipped' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@${{ github.repository_owner }}'
+
       - name: Publish to GitHub Packages
         id: gpr
         if: ${{ !cancelled() && steps.npmjs.conclusion != 'skipped' }}
         shell: bash
         env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_PRIVATE: ${{ github.event.repository.private }}
-          ACTIONS_ID_TOKEN_REQUEST_URL: ''
-          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
         run: |
           set -euo pipefail
           if [ "$REPO_PRIVATE" = "true" ]; then ACCESS="restricted"; else ACCESS="public"; fi
           PKG=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
-          SCOPE="${PKG%%/*}"                       # @owner
           URL="https://npm.pkg.github.com"
           npm pkg delete publishConfig.registry >/dev/null 2>&1 || true
-          npm config set "${SCOPE}:registry=${URL}"
           if npm view "$PKG@$VERSION" version --registry "$URL" >/dev/null 2>&1; then
             echo "$PKG@$VERSION уже есть в GitHub Packages — пропускаем"
           else
