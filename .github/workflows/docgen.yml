@@ -357,12 +357,8 @@ jobs:
 
           printf '%s\n' "${ALL_FILES[@]}" | sort > "$TMPDIR_WORK/source.txt"
 
-          if find "$DOCS_DIR" -type f -name '*.md' ! -name 'README.md' | head -1 | grep -q .; then
-            find "$DOCS_DIR" -type f -name '*.md' ! -name 'README.md' -printf '%P\n' \
-              | sed 's/\.md$//' | sort > "$TMPDIR_WORK/existing.txt"
-          else
-            touch "$TMPDIR_WORK/existing.txt"
-          fi
+          find "$DOCS_DIR" -type f -name '*.md' ! -name 'README.md' -printf '%P\n' \
+            | sed 's/\.md$//' | sort > "$TMPDIR_WORK/existing.txt"
 
           comm -23 "$TMPDIR_WORK/existing.txt" "$TMPDIR_WORK/source.txt" > "$TMPDIR_WORK/orphans.txt"
           comm -23 "$TMPDIR_WORK/source.txt" "$TMPDIR_WORK/existing.txt" > "$TMPDIR_WORK/new.txt"
@@ -384,6 +380,8 @@ jobs:
           while IFS= read -r file; do
             [[ -z "$file" ]] && continue
             md_path="$DOCS_DIR/${file}.md"
+
+            [ -f "$md_path" ] && continue
             mkdir -p "$(dirname "$md_path")"
             filename="$(basename "$file")"
             echo "# ${filename}" > "$md_path"
