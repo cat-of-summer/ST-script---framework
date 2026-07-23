@@ -195,3 +195,4 @@ __pycache__/
 bower_components/
 .npmrc
 LICENSE
+/tests

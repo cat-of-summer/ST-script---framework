@@ -94,7 +94,7 @@ export default class Mask {
 
     static build(mask, base = {}) {
         if (mask && typeof mask == 'object' && !Array.isArray(mask) && !(mask instanceof RegExp)
-            && mask.pattern == null && mask.filter == null)
+            && mask.pattern == null && mask.filter == null && mask.numeral == null)
             return Object.entries(mask).flatMap(([key, m]) =>
                 Mask.build(m, base).map(def => ({ ...def, key })));
 
@@ -102,6 +102,12 @@ export default class Mask {
             if (typeof m == 'function') return { fn: m, base };
             if (m instanceof RegExp) m = { filter: m };
             if (typeof m == 'string') m = { pattern: m };
+
+            if (m.numeral) {
+                let o = { fraction: 0, group: ' ', decimal: ',', prefix: '', suffix: '', sign: false, ...m.numeral };
+                return { numeral: o, fixed: false, valid: null, message: m.message ?? o.message,
+                    filler: m.filler ?? base.filler, before_char: null, before_slot: null };
+            }
 
             let nodes = m.pattern != null
                 ? Mask.compile(m.pattern)
@@ -112,6 +118,7 @@ export default class Mask {
                 nodes,
                 fixed: m.pattern != null && Mask.#is_fixed(nodes),
                 valid: m.valid ? Mask.#no_g(m.valid) : (m.filter ? /./ : null),
+                message: m.message,
                 filler: m.filler ?? base.filler,
                 before_char: m.before_char ?? base.before_char,
                 before_slot: m.before_slot ?? base.before_slot
@@ -124,7 +131,7 @@ export default class Mask {
 
     static #filler(def, ordinal) {
         let filler = def.filler ?? '_';
-        return filler[ordinal] ?? filler[filler.length - 1] ?? '_';
+        return filler[ordinal] ?? filler.at(-1) ?? '_';
     }
 
     static #prepare(def, input_string, ctx) {
@@ -176,6 +183,13 @@ export default class Mask {
         if (s.stop_fmt < 0) s.stop_fmt = s.formatted.length + s.tail.length;
     }
 
+    // Ввод исчерпан посреди обязательного узла: значение неполно, дальше — только плейсхолдер.
+    static #exhaust(s) {
+        s.complete = false;
+        s.done = true;
+        Mask.#stop(s);
+    }
+
     static #walk(nodes, s, def) {
         for (let i = 0; i < nodes.length; i++) {
             let node = nodes[i];
@@ -201,9 +215,7 @@ export default class Mask {
                 let no_fix = false;
                 for (;;) {
                     if (s.ip >= s.input.length) {
-                        s.complete = false;
-                        s.done = true;
-                        Mask.#stop(s);
+                        Mask.#exhaust(s);
                         s.ph_slots.push({ fmt: s.formatted.length + s.tail.length, node });
                         s.ph += filler;
                         break;
@@ -234,9 +246,7 @@ export default class Mask {
                 if (s.done) { s.ph += node.to; continue; }
                 for (;;) {
                     if (s.ip >= s.input.length) {
-                        s.complete = false;
-                        s.done = true;
-                        Mask.#stop(s);
+                        Mask.#exhaust(s);
                         s.ph += node.to;
                         break;
                     }
@@ -258,9 +268,7 @@ export default class Mask {
                 while (count < node.max) {
                     if (s.ip >= s.input.length) {
                         if (count < node.min) {
-                            s.complete = false;
-                            s.done = true;
-                            Mask.#stop(s);
+                            Mask.#exhaust(s);
                             for (let k = count; k < node.min; k++) Mask.#walk(node.children, s, def);
                         } else Mask.#stop(s);
                         break;
@@ -299,6 +307,8 @@ export default class Mask {
     }
 
     static run(def, input_string, ctx) {
+        if (def.numeral) return Mask.#numeral(def, input_string);
+
         let s = {
             input: Mask.#prepare(def, input_string, ctx),
             ctx,
@@ -353,6 +363,70 @@ export default class Mask {
         return result.stop_fmt;
     }
 
+    // Позиция в потоке, после которой окажется (n+1)-й пользовательский символ —
+    // для ограничения ввода по длине raw (атрибут maxlength / параметр max_raw).
+    static cap(result, n) {
+        let chars = result.units.filter(u => u.kind == 'char');
+        return chars.length > n ? chars[n - 1].stream_end : result.stream.length;
+    }
+
+    // Числовой форматтер (форма { numeral }). Заполнение справа: набранные цифры —
+    // это счётчик младших разрядов (1 → 0,01 при fraction=2). Возвращает тот же
+    // result-объект, что #walk/run, поэтому весь DOM-слой работает без спецкейсов.
+    static #numeral(def, input_string) {
+        let o = def.numeral;
+        let str = String(input_string ?? '');
+        let neg = o.sign && str.includes('-');
+
+        let digits;
+        if (o.decimal && (str.includes(o.decimal) || str.includes('.'))) {
+            let esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            let num = str.replace(new RegExp(`[^0-9${esc(o.decimal)}.]`, 'g'), '').replace(o.decimal, '.');
+            let val = parseFloat(num);
+            digits = Number.isFinite(val) ? String(Math.round(val * 10 ** o.fraction)) : '';
+        } else
+            digits = str.replace(/\D/g, '').replace(/^0+/, '');
+
+        if (!digits) return { stream: '', raw: '', formatted: '', tail: '', ph: '',
+            ph_slots: [], complete: false, consumed: 0, units: [], cells: [], stop_fmt: 0 };
+
+        let f = o.fraction;
+        let padded = digits.padStart(f + 1, '0');
+        let int = (f ? padded.slice(0, -f) : padded).replace(/^0+(?=\d)/, '');
+        let frac = f ? padded.slice(-f) : '';
+        let first_sig = int.length + frac.length - digits.length;  // индекс первой значащей цифры
+
+        let raw = (neg ? '-' : '') + digits;
+        let formatted = '', units = [], si = 0, gi = 0;
+        let lit = txt => { formatted += txt; };
+        let chr = ch => {
+            units.push({ kind: 'char', ordinal: null,
+                stream_start: si, stream_end: si + 1,
+                fmt_start: formatted.length, fmt_end: formatted.length + 1 });
+            formatted += ch; si++;
+        };
+
+        lit(o.prefix);
+        if (neg) chr('-');
+        for (let idx = 0; idx < int.length; idx++, gi++) {
+            if (idx && (int.length - idx) % 3 == 0) lit(o.group);
+            gi >= first_sig ? chr(int[idx]) : lit(int[idx]);
+        }
+        if (f) {
+            lit(o.decimal);
+            for (let idx = 0; idx < frac.length; idx++, gi++)
+                gi >= first_sig ? chr(frac[idx]) : lit(frac[idx]);
+        }
+        let stop_fmt = formatted.length;
+        lit(o.suffix);
+
+        let value = (neg ? -1 : 1) * parseFloat(int + (f ? '.' + frac : ''));
+        let complete = (o.min == null || value >= o.min) && (o.max == null || value <= o.max);
+
+        return { stream: raw, raw, formatted, tail: '', ph: '', ph_slots: [],
+            complete, consumed: raw.length, units, cells: [], stop_fmt };
+    }
+
     static #layout(def) {
         let layout = Mask.run(def, ''), part = 0;
         layout.slots = layout.ph_slots;
@@ -392,6 +466,10 @@ export default class Mask {
             flow: true,
             rewrite: false,
             caret: true,
+            coerce_type: true,
+            max_raw: null,
+            validate: null,
+            validation_message: null,
 
             before_init:  () => {},
             on_init:      () => {},
@@ -475,20 +553,45 @@ export default class Mask {
         };
     }
 
+    // Дефолт-маска для голого приведённого поля (без params.mask и атрибута mask).
+    #default_for(coerced) {
+        if (coerced == 'email')
+            return Mask.build({ filter: /[a-z0-9@._%+-]/i, valid: /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/ }, this.#base());
+        if (coerced == 'number')
+            return Mask.build({ numeral: {} }, this.#base());
+        return null;
+    }
+
     #bind(input) {
         if (find(input)) throw new Error("Маска уже привязана к этому полю");
         own(input, this);
 
+        // type=number/email не отдают selection API — приводим к text + inputmode,
+        // сохраняя исходный тип (для цифрового guard, дефолт-маски и нативной валидации).
+        let coerced = null;
+        if (this.#params.coerce_type !== false && (input.type == 'number' || input.type == 'email')) {
+            coerced = input.type;
+            input.inputMode = coerced == 'number' ? 'numeric' : 'email';
+            input.type = 'text';
+        }
+
         if (!Mask.#SELECTABLE.includes(input.type))
             console.warn(`Mask: поле type="${input.type}" не поддерживает управление кареткой — используйте type="text" или "tel"`, input);
 
-        let defs = this.#defs ?? (input.getAttribute('mask') ? Mask.build(input.getAttribute('mask'), this.#base()) : null);
+        // maxlength считается по отформатированному значению и воевал бы с движком —
+        // снимаем атрибут и держим лимит по raw сами.
+        let ml = input.getAttribute('maxlength');
+        if (ml != null) input.removeAttribute('maxlength');
+        let max_raw = this.#params.max_raw ?? (ml != null ? +ml : null);
+
+        let defs = this.#defs
+            ?? (input.getAttribute('mask') ? Mask.build(input.getAttribute('mask'), this.#base()) : this.#default_for(coerced));
         if (!defs) {
             console.warn('Mask: для поля не задана маска (ни в params.mask, ни в атрибуте mask)', input);
             return;
         }
 
-        let st = { defs, def: null, stream: '', result: null, mask_id: null, rendered: '', run: null, composing: false, handled: false };
+        let st = { defs, def: null, stream: '', result: null, mask_id: null, rendered: '', run: null, composing: false, handled: false, coerced, max_raw };
         this.#states.set(input, st);
         this.#inputs.push(input);
 
@@ -564,6 +667,13 @@ export default class Mask {
                 let out = this.before_paste(input, insert);
                 if (out === false) return;
                 if (typeof out == 'string') insert = out;
+            }
+
+            // Поле было type=number: принудительно только цифры (и минус, если numeral со знаком),
+            // независимо от токенов маски.
+            if (st.coerced == 'number') {
+                let sign = st.defs.some(d => d.numeral?.sign);
+                insert = [...insert].filter(c => c >= '0' && c <= '9' || sign && c == '-').join('');
             }
         }
 
@@ -767,10 +877,18 @@ export default class Mask {
 
     #reconcile(input, stream_next, { prefix = null, caret_fmt = null, silent = false } = {}) {
         let st = this.#states.get(input);
-        let best = Mask.run_all(st.defs, stream_next, { raw: st.result?.raw ?? '', value: input.value, input });
+        let ctx = { raw: st.result?.raw ?? '', value: input.value, input };
+        let best = Mask.run_all(st.defs, stream_next, ctx);
         if (!best) return;
 
         let { result, def, mask_id } = best;
+
+        // Лимит по длине raw (атрибут maxlength / параметр max_raw): срезаем лишнее и переформатируем.
+        if (st.max_raw != null && result.raw.length > st.max_raw) {
+            best = Mask.run_all(st.defs, result.stream.slice(0, Mask.cap(result, st.max_raw)), ctx);
+            ({ result, def, mask_id } = best);
+        }
+
         let text = this.#text_for(input, result);
 
         if (input.value !== text) input.value = text;
@@ -793,6 +911,10 @@ export default class Mask {
         input.setAttribute('mask_id', mask_id);
         input.setAttribute('progress', result.raw.length);
         input.setAttribute('is_complete', result.complete);
+
+        // Нативная валидация (Constraint Validation API): :invalid, reportValidity(), блокировка submit.
+        if (this.#validate_on(st) && input.setCustomValidity)
+            input.setCustomValidity(!result.stream || result.complete ? '' : this.#validation_message(input, st));
 
         if (silent) return;
 
@@ -821,5 +943,22 @@ export default class Mask {
             mask_id: st.mask_id,
             progress: st.result?.raw.length ?? 0
         };
+    }
+
+    #validate_on(st) {
+        let v = this.#params.validate;
+        return v === true || (v == null && st.coerced != null);
+    }
+
+    #validation_message(input, st) {
+        let custom = typeof this.validation_message == 'function'
+            ? this.validation_message
+            : (this.#params.validation_message ?? st.def?.message);
+        if (typeof custom == 'function') return custom(input, this.#state_of(input, st)) || '';
+        if (typeof custom == 'string')   return custom;
+
+        if (st.coerced == 'email')                    return 'Введите корректный адрес электронной почты';
+        if (st.coerced == 'number' || st.def?.numeral) return 'Введите число в допустимом диапазоне';
+        return 'Заполните поле полностью';
     }
 }

@@ -63,6 +63,10 @@
     <label>Госномер РФ (лат → кир)</label>   <input name="plate">
     <label>GPS-координаты</label>            <input name="gps">
     <label>Цена (разряды, скрытая каретка)</label> <input name="price" inputmode="numeric">
+    <label>Сумма (numeral: заполнение справа)</label> <input name="sum" type="text">
+    <label>Количество (&lt;input type=number&gt;)</label> <input name="qty" type="number">
+    <label>Email (&lt;input type=email&gt;, авто-маска)</label> <input name="email2" type="email" required>
+    <label>Ник (maxlength=8 по raw)</label>   <input name="nick" maxlength="8" mask="{*;0-}">
     <button type="submit">Отправить</button>
 </form>
 
@@ -92,6 +96,10 @@
     <li>Сброс формы (кнопка reset или form.reset()) очищает поля и атрибуты.</li>
     <li>ИНН: 11-я цифра переключает маску 10 → 12 (атрибут mask_id).</li>
     <li>Мобильные: Android Chrome (Gboard) и iOS Safari — набор, backspace, вставка.</li>
+    <li>Сумма (numeral): набрать «1» → «0,01 ₽», далее цифры сдвигают разряды влево, группировка целой части; Backspace убирает младший разряд; вставка «итого: 1 234 567,89 руб» вытягивает число.</li>
+    <li>Количество (&lt;input type=number&gt;): в DevTools поле уже <code>type="text" inputmode="numeric"</code>; буквы не вводятся; значение группируется; при пустом поле форма ругается (required).</li>
+    <li>Email (&lt;input type=email&gt;): поле стало <code>type="text"</code>; ввести «user@» и нажать «Отправить» — нативный пузырь «Введите корректный адрес…», submit заблокирован; дополнить до «user@mail.ru» — валидно.</li>
+    <li>Ник: атрибута <code>maxlength</code> на элементе нет (снят), но больше 8 символов не вводится и не вставляется — лимит по raw.</li>
 </ol>
 
 <script>
@@ -338,6 +346,28 @@
                 return '0'.repeat((n - 1) % 3 + 1) + ' 000'.repeat((n - 1) / 3 | 0) + ' ₽';
             }
         });
+
+        // Сумма — numeral: набранные цифры это счётчик копеек (1 → 0,01), группировка
+        // целой части, суффикс. Каретка скрыта — ввод всегда с конца
+        new Mask({
+            target: 'input[name=sum]',
+            caret: 'hide',
+            placeholder: 'always',
+            filler: 0,
+            mask: { numeral: { fraction: 2, group: ' ', decimal: ',', suffix: ' ₽', min: 0 } }
+        });
+
+        // <input type=number> без маски: сам приводится к type=text + inputmode=numeric,
+        // дефолтная numeral-маска (группировка целых), ввод только цифр, нативная валидность
+        new Mask({ target: 'input[name=qty]' });
+
+        // <input type=email> без маски: приводится к text + inputmode=email, подставляется
+        // универсальная email-маска, а complete прокидывается в setCustomValidity —
+        // :invalid, reportValidity() и блокировка submit работают нативно
+        new Mask({ target: 'input[name=email2]' });
+
+        // maxlength снимается с элемента и работает как лимит по raw (а не по формату)
+        new Mask({ target: 'input[name=nick]' });
 
         // Валидация формы по атрибуту is_complete
         document.querySelector('form').addEventListener('submit', event => {
