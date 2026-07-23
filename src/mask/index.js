@@ -1,438 +1,20 @@
 import { element, elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
+import { build, run, run_all, render, caret_for, cap, prepare, filler } from './_engine.js';
+
+const CALLBACKS = ['before_init', 'on_init', 'before_char', 'before_slot', 'before_input',
+    'on_input', 'before_paste', 'on_paste', 'on_accept', 'on_complete', 'on_incomplete', 'on_mask_change'];
 
 export default class Mask {
 
-    static #SLOTS = { '0': /^[0-9]$/, 'a': /^\p{L}$/u, '*': /^[^\n]$/ };
     static #CONFIG = ['target', 'mask'];
     static #SELECTABLE = ['text', 'search', 'tel', 'url', 'password'];
 
-    static #unesc = str => str.replace(/\\(.)/g, '$1');
-    static #no_g = re => re.global ? new RegExp(re.source, re.flags.replace('g', '')) : re;
-
-    static #scan(str, from) {
-        let open = str[from], close = open == '{' ? '}' : ']', depth = 0;
-        for (let i = from; i < str.length; i++) {
-            let c = str[i];
-            if (c == '\\') { i++; continue; }
-            if (open == '[' && c == '{') {
-                if ((i = Mask.#scan(str, i)) < 0) return -1;
-            } else if (c == open) depth++;
-            else if (c == close && --depth == 0) return i;
-        }
-        return -1;
-    }
-
-    static #last_top(body, needle) {
-        let depth = 0, found = -1;
-        for (let i = 0; i < body.length; i++) {
-            if (body[i] == '\\') { i++; continue; }
-            if (body[i] == '{' || body[i] == '[') depth++;
-            else if (body[i] == '}' || body[i] == ']') depth--;
-            else if (depth == 0 && body.startsWith(needle, i)) found = i;
-        }
-        return found;
-    }
-
-    static #classify(body) {
-        let fail = () => {
-            console.warn('Некорректный блок маски', `{${body}}`);
-            return [...`{${body}}`].map(char => ({ type: 'literal', char }));
-        };
-
-        let semi = Mask.#last_top(body, ';');
-        if (semi > 0) {
-            let range = body.slice(semi + 1);
-            if (/^(\d+|\d*-\d*)$/.test(range) && range != '-') {
-                let [min, max] = /^\d+$/.test(range)
-                    ? [+range, +range]
-                    : range.split('-').map((n, i) => n === '' ? (i ? Infinity : 0) : +n);
-                return max < min ? fail()
-                    : [{ type: 'repeat', children: Mask.compile(body.slice(0, semi)), min, max }];
-            }
-        }
-
-        if (body[0] == '{' && body.at(-1) == '}')
-            try {
-                return [{ type: 'slot', test: new RegExp(`^(?:${body.slice(1, -1)})$`, 'u') }];
-            } catch { return fail(); }
-
-        let arrow = Mask.#last_top(body, '=>');
-        if (arrow > 0) {
-            let from = Mask.#unesc(body.slice(0, arrow)), to = Mask.#unesc(body.slice(arrow + 2));
-            return from.length != 1 || !to ? fail() : [{ type: 'transform', from, to }];
-        }
-
-        return fail();
-    }
-
-    static compile(pattern) {
-        let nodes = [];
-
-        for (let i = 0; i < pattern.length; i++) {
-            let char = pattern[i], end;
-
-            if (char == '\\')
-                nodes.push({ type: 'literal', char: pattern[++i] ?? '\\' });
-            else if (char == '[' && (end = Mask.#scan(pattern, i)) >= 0) {
-                nodes.push({ type: 'optional', children: Mask.compile(pattern.slice(i + 1, end)) });
-                i = end;
-            } else if (char == '{' && (end = Mask.#scan(pattern, i)) >= 0) {
-                nodes.push(...Mask.#classify(pattern.slice(i + 1, end)));
-                i = end;
-            } else
-                nodes.push(Mask.#SLOTS[char] ? { type: 'slot', test: Mask.#SLOTS[char] } : { type: 'literal', char });
-        }
-
-        return nodes;
-    }
-
-    static #is_fixed(nodes) {
-        return nodes.every(node =>
-            node.type == 'literal' || node.type == 'slot'
-            || node.type == 'repeat' && node.min == node.max && Mask.#is_fixed(node.children));
-    }
-
-    static build(mask, base = {}) {
-        if (mask && typeof mask == 'object' && !Array.isArray(mask) && !(mask instanceof RegExp)
-            && mask.pattern == null && mask.filter == null && mask.numeral == null)
-            return Object.entries(mask).flatMap(([key, m]) =>
-                Mask.build(m, base).map(def => ({ ...def, key })));
-
-        let defs = (Array.isArray(mask) ? mask : [mask]).map(m => {
-            if (typeof m == 'function') return { fn: m, base };
-            if (m instanceof RegExp) m = { filter: m };
-            if (typeof m == 'string') m = { pattern: m };
-
-            if (m.numeral) {
-                let o = { fraction: 0, group: ' ', decimal: ',', prefix: '', suffix: '', sign: false, ...m.numeral };
-                return { numeral: o, fixed: false, valid: null, message: m.message ?? o.message,
-                    filler: m.filler ?? base.filler, before_char: null, before_slot: null };
-            }
-
-            let nodes = m.pattern != null
-                ? Mask.compile(m.pattern)
-                : [{ type: 'repeat', min: 0, max: m.max_length ?? Infinity, greedy: true,
-                     children: [{ type: 'slot', test: Mask.#no_g(m.filter) }] }];
-
-            return {
-                nodes,
-                fixed: m.pattern != null && Mask.#is_fixed(nodes),
-                valid: m.valid ? Mask.#no_g(m.valid) : (m.filter ? /./ : null),
-                message: m.message,
-                filler: m.filler ?? base.filler,
-                before_char: m.before_char ?? base.before_char,
-                before_slot: m.before_slot ?? base.before_slot
-            };
-        });
-
-        defs.forEach((def, i) => def.key ??= i);
-        return defs;
-    }
-
-    static #filler(def, ordinal) {
-        let filler = def.filler ?? '_';
-        return filler[ordinal] ?? filler.at(-1) ?? '_';
-    }
-
-    static #prepare(def, input_string, ctx) {
-        let chars = [...String(input_string ?? '')];
-        if (!def.before_char) return chars;
-
-        return chars.flatMap(char => {
-            let out = def.before_char(ctx?.input, { char });
-            if (out === false || out === '' || out === null) return [];
-            return typeof out == 'string' ? [...out] : [char];
-        });
-    }
-
-    static #takes(node, c, s) {
-        if (node.type == 'slot')      return node.test.test(c);
-        if (node.type == 'transform') return node.from === c || s.input.slice(s.ip, s.ip + node.to.length).join('') === node.to;
-        if (node.type == 'repeat')    return Mask.#consumes(node.children, c, s);
-        return false;
-    }
-
-    static #consumes(nodes, c, s, entry) {
-        for (let node of nodes) {
-            if (node.type == 'literal') {
-                if (!entry && node.char === c) return true;
-                continue;
-            }
-            if (node.type == 'optional' || node.type == 'repeat' && node.min == 0) {
-                if (Mask.#consumes(node.children, c, s, entry)) return true;
-                continue;
-            }
-            return Mask.#takes(node, c, s);
-        }
-        return entry ? nodes.some(node => node.type == 'literal' && node.char === c) : false;
-    }
-
-    static #accept(s, text, fmt_text, kind = 'char', ordinal = null) {
-        s.units.push({
-            kind, ordinal,
-            stream_start: s.stream.length, stream_end: s.stream.length + text.length,
-            fmt_start: s.formatted.length, fmt_end: s.formatted.length + fmt_text.length
-        });
-        s.stream += text;
-        if (kind == 'char') s.raw += text;
-        if (ordinal != null) s.cells[ordinal] = kind == 'char' ? text : null;
-        s.formatted += fmt_text;
-    }
-
-    static #stop(s) {
-        if (s.stop_fmt < 0) s.stop_fmt = s.formatted.length + s.tail.length;
-    }
-
-    // Ввод исчерпан посреди обязательного узла: значение неполно, дальше — только плейсхолдер.
-    static #exhaust(s) {
-        s.complete = false;
-        s.done = true;
-        Mask.#stop(s);
-    }
-
-    static #walk(nodes, s, def) {
-        for (let i = 0; i < nodes.length; i++) {
-            let node = nodes[i];
-
-            if (node.type == 'literal') {
-                if (s.done) s.ph += node.char;
-                else if (s.ip < s.input.length) {
-                    if (s.input[s.ip] === node.char) {
-                        s.ip++;
-                        s.consumed++;
-                        Mask.#accept(s, node.char, node.char, 'literal');
-                    } else
-                        s.formatted += node.char;
-                } else s.tail += node.char;
-
-            } else if (node.type == 'slot') {
-                let ordinal = s.ordinal++, filler = Mask.#filler(def, ordinal);
-                if (s.done) {
-                    s.ph_slots.push({ fmt: s.formatted.length + s.tail.length + s.ph.length, node });
-                    s.ph += filler;
-                    continue;
-                }
-                let no_fix = false;
-                for (;;) {
-                    if (s.ip >= s.input.length) {
-                        Mask.#exhaust(s);
-                        s.ph_slots.push({ fmt: s.formatted.length + s.tail.length, node });
-                        s.ph += filler;
-                        break;
-                    }
-                    let c = s.input[s.ip];
-                    if (node.test.test(c)) {
-                        if (def.before_slot && !no_fix) {
-                            let out = def.before_slot(s.ctx?.input,
-                                { char: c, slot: ordinal, cells: s.cells, raw: s.raw, node });
-                            if (out === false) { s.ip++; continue; }
-                            if (typeof out == 'string' && out !== c) {
-                                s.input.splice(s.ip, 1, ...out);
-                                no_fix = true;
-                                continue;
-                            }
-                        }
-                        Mask.#accept(s, c, c, 'char', ordinal);
-                    } else if (c === filler) {
-                        s.complete = false;
-                        Mask.#accept(s, c, c, 'hole', ordinal);
-                    } else { s.ip++; continue; }
-                    s.ip++;
-                    s.consumed++;
-                    break;
-                }
-
-            } else if (node.type == 'transform') {
-                if (s.done) { s.ph += node.to; continue; }
-                for (;;) {
-                    if (s.ip >= s.input.length) {
-                        Mask.#exhaust(s);
-                        s.ph += node.to;
-                        break;
-                    }
-                    if (s.input.slice(s.ip, s.ip + node.to.length).join('') === node.to)
-                        s.ip += node.to.length, s.consumed += node.to.length;
-                    else if (s.input[s.ip] === node.from)
-                        s.ip++, s.consumed++;
-                    else { s.ip++; continue; }
-                    Mask.#accept(s, node.to, node.to);
-                    break;
-                }
-
-            } else if (node.type == 'repeat') {
-                if (s.done) {
-                    for (let k = 0; k < node.min; k++) Mask.#walk(node.children, s, def);
-                    continue;
-                }
-                let count = 0;
-                while (count < node.max) {
-                    if (s.ip >= s.input.length) {
-                        if (count < node.min) {
-                            Mask.#exhaust(s);
-                            for (let k = count; k < node.min; k++) Mask.#walk(node.children, s, def);
-                        } else Mask.#stop(s);
-                        break;
-                    }
-                    if (!Mask.#consumes(node.children, s.input[s.ip], s)) {
-                        if (!node.greedy && count >= node.min) break;
-                        s.ip++;
-                        continue;
-                    }
-                    let before = s.ip;
-                    Mask.#walk(node.children, s, def);
-                    if (s.done) {
-                        for (let k = count + 1; k < node.min; k++) Mask.#walk(node.children, s, def);
-                        break;
-                    }
-                    if (s.ip === before) break;
-                    count++;
-                }
-
-            } else if (node.type == 'optional') {
-                if (s.done) continue;
-                let rest = nodes.slice(i + 1), entered = false;
-                while (s.ip < s.input.length) {
-                    let c = s.input[s.ip];
-                    if (Mask.#consumes(node.children, c, s, true)) {
-                        entered = true;
-                        Mask.#walk(node.children, s, def);
-                        break;
-                    }
-                    if (Mask.#consumes(rest, c, s)) break;
-                    s.ip++;
-                }
-                if (!entered && s.ip >= s.input.length) Mask.#stop(s);
-            }
-        }
-    }
-
-    static run(def, input_string, ctx) {
-        if (def.numeral) return Mask.#numeral(def, input_string);
-
-        let s = {
-            input: Mask.#prepare(def, input_string, ctx),
-            ctx,
-            ip: 0,
-            stream: '', raw: '', formatted: '', tail: '', ph: '',
-            ph_slots: [], units: [], cells: [],
-            consumed: 0, ordinal: 0,
-            complete: true, done: false, stop_fmt: -1
-        };
-
-        Mask.#walk(def.nodes, s, def);
-        if (s.stop_fmt < 0) s.stop_fmt = s.formatted.length;
-        if (def.valid) s.complete = s.complete && def.valid.test(s.raw);
-
-        return {
-            stream: s.stream, raw: s.raw, formatted: s.formatted, tail: s.tail,
-            ph: s.ph, ph_slots: s.ph_slots, complete: s.complete, consumed: s.consumed,
-            units: s.units, cells: s.cells, stop_fmt: s.stop_fmt
-        };
-    }
-
-    static run_all(defs, input_string, ctx = {}) {
-        let resolved = [];
-        ctx = { ...ctx, stream: String(input_string ?? '') };
-        for (let def of defs)
-            def.fn ? resolved.push(...Mask.build(def.fn(ctx), def.base).map(d => ({ ...d, key: def.key ?? d.key })))
-                   : resolved.push(def);
-
-        let best = null;
-        for (let def of resolved) {
-            let result = Mask.run(def, input_string, ctx);
-            if (!best
-                || result.consumed > best.result.consumed
-                || result.consumed == best.result.consumed && result.complete && !best.result.complete)
-                best = { result, def, mask_id: def.key };
-        }
-        return best;
-    }
-
-    static render(result, placeholder) {
-        if (placeholder == 'always') return result.formatted + result.tail + result.ph;
-        if (placeholder === false)   return result.formatted;
-        return result.formatted + result.tail;
-    }
-
-    static caret_for(result, stream_pos) {
-        for (let unit of result.units) {
-            if (unit.kind == 'literal') continue;
-            if (stream_pos <= unit.stream_start || stream_pos < unit.stream_end)
-                return unit.fmt_start;
-        }
-        return result.stop_fmt;
-    }
-
-    // Позиция в потоке, после которой окажется (n+1)-й пользовательский символ —
-    // для ограничения ввода по длине raw (атрибут maxlength / параметр max_raw).
-    static cap(result, n) {
-        let chars = result.units.filter(u => u.kind == 'char');
-        return chars.length > n ? chars[n - 1].stream_end : result.stream.length;
-    }
-
-    // Числовой форматтер (форма { numeral }). Заполнение справа: набранные цифры —
-    // это счётчик младших разрядов (1 → 0,01 при fraction=2). Возвращает тот же
-    // result-объект, что #walk/run, поэтому весь DOM-слой работает без спецкейсов.
-    static #numeral(def, input_string) {
-        let o = def.numeral;
-        let str = String(input_string ?? '');
-        let neg = o.sign && str.includes('-');
-
-        let digits;
-        if (o.decimal && (str.includes(o.decimal) || str.includes('.'))) {
-            let esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            let num = str.replace(new RegExp(`[^0-9${esc(o.decimal)}.]`, 'g'), '').replace(o.decimal, '.');
-            let val = parseFloat(num);
-            digits = Number.isFinite(val) ? String(Math.round(val * 10 ** o.fraction)) : '';
-        } else
-            digits = str.replace(/\D/g, '').replace(/^0+/, '');
-
-        if (!digits) return { stream: '', raw: '', formatted: '', tail: '', ph: '',
-            ph_slots: [], complete: false, consumed: 0, units: [], cells: [], stop_fmt: 0 };
-
-        let f = o.fraction;
-        let padded = digits.padStart(f + 1, '0');
-        let int = (f ? padded.slice(0, -f) : padded).replace(/^0+(?=\d)/, '');
-        let frac = f ? padded.slice(-f) : '';
-        let first_sig = int.length + frac.length - digits.length;  // индекс первой значащей цифры
-
-        let raw = (neg ? '-' : '') + digits;
-        let formatted = '', units = [], si = 0, gi = 0;
-        let lit = txt => { formatted += txt; };
-        let chr = ch => {
-            units.push({ kind: 'char', ordinal: null,
-                stream_start: si, stream_end: si + 1,
-                fmt_start: formatted.length, fmt_end: formatted.length + 1 });
-            formatted += ch; si++;
-        };
-
-        lit(o.prefix);
-        if (neg) chr('-');
-        for (let idx = 0; idx < int.length; idx++, gi++) {
-            if (idx && (int.length - idx) % 3 == 0) lit(o.group);
-            gi >= first_sig ? chr(int[idx]) : lit(int[idx]);
-        }
-        if (f) {
-            lit(o.decimal);
-            for (let idx = 0; idx < frac.length; idx++, gi++)
-                gi >= first_sig ? chr(frac[idx]) : lit(frac[idx]);
-        }
-        let stop_fmt = formatted.length;
-        lit(o.suffix);
-
-        let value = (neg ? -1 : 1) * parseFloat(int + (f ? '.' + frac : ''));
-        let complete = (o.min == null || value >= o.min) && (o.max == null || value <= o.max);
-
-        return { stream: raw, raw, formatted, tail: '', ph: '', ph_slots: [],
-            complete, consumed: raw.length, units, cells: [], stop_fmt };
-    }
-
     static #layout(def) {
-        let layout = Mask.run(def, ''), part = 0;
+        let layout = run(def, ''), part = 0;
         layout.slots = layout.ph_slots;
         layout.parts = layout.slots.map((slot, i) =>
             i && slot.fmt > layout.slots[i - 1].fmt + 1 ? ++part : part);
-        layout.template = Mask.render(layout, 'always');
+        layout.template = render(layout, 'always');
         return layout;
     }
 
@@ -449,18 +31,14 @@ export default class Mask {
     get value() { return this.#inputs.map(input => input.value); }
 
     clone(params) {
-        return new Mask({
-            ...this.#params,
-            ...this.#methods,
-            ...params,
-            parent: this
-        });
+        return new Mask({ ...this.#params, ...this.#methods, ...params, parent: this });
     }
 
     constructor(params) {
         params = {
             target: 'input[mask]',
             mask: null,
+            numeral: null,
             filler: '_',
             placeholder: true,
             flow: true,
@@ -470,35 +48,23 @@ export default class Mask {
             max_raw: null,
             validate: null,
             validation_message: null,
-
-            before_init:  () => {},
-            on_init:      () => {},
-            before_char:  () => {},
-            before_slot:  () => {},
-            before_input: () => {},
-            on_input:     () => {},
-            before_paste: () => {},
-            on_paste:     () => {},
-            on_accept:      () => {},
-            on_complete:    () => {},
-            on_incomplete:  () => {},
-            on_mask_change: () => {},
-
+            ...Object.fromEntries(CALLBACKS.map(k => [k, () => {}])),
             ...params
         };
 
         for (let [key, value] of Object.entries(params))
             if (typeof value == "function" && !Mask.#CONFIG.includes(key)) {
                 this[key] = value.bind(this);
-
                 this.#methods[key] = value;
             } else
                 this.#params[key] = value;
 
         this.before_init(this.#params);
 
-        if (this.#params.mask != null)
-            this.#defs = Mask.build(this.#params.mask, this.#base());
+        if (this.#params.numeral != null)
+            this.#defs = build({ numeral: this.#params.numeral }, this.#base());
+        else if (this.#params.mask != null)
+            this.#defs = build(this.#params.mask, this.#base());
 
         for (let input of elements(this.#params.target))
             this.#bind(input);
@@ -533,7 +99,7 @@ export default class Mask {
     }
 
     set_mask(mask, target = null) {
-        let defs = Mask.build(mask, this.#base());
+        let defs = build(mask, this.#base());
         if (!target) this.#defs = defs;
 
         for (let input of (target ? elements(target) : this.#inputs)) {
@@ -553,12 +119,11 @@ export default class Mask {
         };
     }
 
-    // Дефолт-маска для голого приведённого поля (без params.mask и атрибута mask).
     #default_for(coerced) {
         if (coerced == 'email')
-            return Mask.build({ filter: /[a-z0-9@._%+-]/i, valid: /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/ }, this.#base());
+            return build({ filter: /[a-z0-9@._%+-]/i, valid: /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/ }, this.#base());
         if (coerced == 'number')
-            return Mask.build({ numeral: {} }, this.#base());
+            return build({ numeral: {} }, this.#base());
         return null;
     }
 
@@ -566,8 +131,6 @@ export default class Mask {
         if (find(input)) throw new Error("Маска уже привязана к этому полю");
         own(input, this);
 
-        // type=number/email не отдают selection API — приводим к text + inputmode,
-        // сохраняя исходный тип (для цифрового guard, дефолт-маски и нативной валидации).
         let coerced = null;
         if (this.#params.coerce_type !== false && (input.type == 'number' || input.type == 'email')) {
             coerced = input.type;
@@ -578,20 +141,19 @@ export default class Mask {
         if (!Mask.#SELECTABLE.includes(input.type))
             console.warn(`Mask: поле type="${input.type}" не поддерживает управление кареткой — используйте type="text" или "tel"`, input);
 
-        // maxlength считается по отформатированному значению и воевал бы с движком —
-        // снимаем атрибут и держим лимит по raw сами.
         let ml = input.getAttribute('maxlength');
         if (ml != null) input.removeAttribute('maxlength');
         let max_raw = this.#params.max_raw ?? (ml != null ? +ml : null);
 
         let defs = this.#defs
-            ?? (input.getAttribute('mask') ? Mask.build(input.getAttribute('mask'), this.#base()) : this.#default_for(coerced));
+            ?? (input.getAttribute('mask') ? build(input.getAttribute('mask'), this.#base()) : this.#default_for(coerced));
         if (!defs) {
             console.warn('Mask: для поля не задана маска (ни в params.mask, ни в атрибуте mask)', input);
             return;
         }
 
-        let st = { defs, def: null, stream: '', result: null, mask_id: null, rendered: '', run: null, composing: false, handled: false, coerced, max_raw };
+        let numeric = coerced == 'number' || this.#params.numeral != null;
+        let st = { defs, def: null, stream: '', result: null, mask_id: null, rendered: '', run: null, composing: false, handled: false, coerced, max_raw, numeric };
         this.#states.set(input, st);
         this.#inputs.push(input);
 
@@ -669,9 +231,7 @@ export default class Mask {
                 if (typeof out == 'string') insert = out;
             }
 
-            // Поле было type=number: принудительно только цифры (и минус, если numeral со знаком),
-            // независимо от токенов маски.
-            if (st.coerced == 'number') {
+            if (st.numeric) {
                 let sign = st.defs.some(d => d.numeral?.sign);
                 insert = [...insert].filter(c => c >= '0' && c <= '9' || sign && c == '-').join('');
             }
@@ -761,7 +321,7 @@ export default class Mask {
         anchor ??= k < n ? parts[k] : null;
         let crossed = null;
 
-        for (let c of Mask.#prepare(def, insert, { input })) {
+        for (let c of prepare(def, insert, { input })) {
             if (k >= n) {
                 if (restart == null) break;
                 k = parts.indexOf(restart);
@@ -800,9 +360,9 @@ export default class Mask {
         }
 
         let last = cells.reduce((acc, cell, i) => cell != null ? i : acc, -1);
-        let stream = cells.slice(0, last + 1).map((cell, i) => cell ?? Mask.#filler(def, i)).join('');
+        let stream = cells.slice(0, last + 1).map((cell, i) => cell ?? filler(def, i)).join('');
 
-        let pos = Math.min(Mask.run(def, stream.slice(0, k), { input }).stream.length, n);
+        let pos = Math.min(run(def, stream.slice(0, k), { input }).stream.length, n);
         let caret = pos < n ? slots[pos].fmt : slots[n - 1].fmt + 1;
         if (!flow && insert && pos > 0 && pos < n && parts[pos] != parts[pos - 1])
             caret = slots[pos - 1].fmt + 1;
@@ -878,14 +438,13 @@ export default class Mask {
     #reconcile(input, stream_next, { prefix = null, caret_fmt = null, silent = false } = {}) {
         let st = this.#states.get(input);
         let ctx = { raw: st.result?.raw ?? '', value: input.value, input };
-        let best = Mask.run_all(st.defs, stream_next, ctx);
+        let best = run_all(st.defs, stream_next, ctx);
         if (!best) return;
 
         let { result, def, mask_id } = best;
 
-        // Лимит по длине raw (атрибут maxlength / параметр max_raw): срезаем лишнее и переформатируем.
         if (st.max_raw != null && result.raw.length > st.max_raw) {
-            best = Mask.run_all(st.defs, result.stream.slice(0, Mask.cap(result, st.max_raw)), ctx);
+            best = run_all(st.defs, result.stream.slice(0, cap(result, st.max_raw)), ctx);
             ({ result, def, mask_id } = best);
         }
 
@@ -895,7 +454,7 @@ export default class Mask {
         st.rendered = text;
 
         if (caret_fmt == null && prefix != null && document.activeElement === input)
-            caret_fmt = Mask.caret_for(result, Mask.run(def, prefix, { input }).stream.length);
+            caret_fmt = caret_for(result, run(def, prefix, { input }).stream.length);
         if (caret_fmt != null && document.activeElement === input) {
             caret_fmt = Math.min(caret_fmt, text.length);
             input.setSelectionRange(caret_fmt, caret_fmt);
@@ -912,7 +471,6 @@ export default class Mask {
         input.setAttribute('progress', result.raw.length);
         input.setAttribute('is_complete', result.complete);
 
-        // Нативная валидация (Constraint Validation API): :invalid, reportValidity(), блокировка submit.
         if (this.#validate_on(st) && input.setCustomValidity)
             input.setCustomValidity(!result.stream || result.complete ? '' : this.#validation_message(input, st));
 
@@ -929,10 +487,10 @@ export default class Mask {
     #text_for(input, result) {
         if (!result.stream) {
             if (document.activeElement !== input) return '';
-            if (this.#params.placeholder == 'always') return Mask.render(result, 'always');
-            return this.#params.placeholder == false ? '' : Mask.render(result, true);
+            if (this.#params.placeholder == 'always') return render(result, 'always');
+            return this.#params.placeholder == false ? '' : render(result, true);
         }
-        return Mask.render(result, this.#params.placeholder);
+        return render(result, this.#params.placeholder);
     }
 
     #state_of(input, st) {
@@ -957,7 +515,7 @@ export default class Mask {
         if (typeof custom == 'function') return custom(input, this.#state_of(input, st)) || '';
         if (typeof custom == 'string')   return custom;
 
-        if (st.coerced == 'email')                    return 'Введите корректный адрес электронной почты';
+        if (st.coerced == 'email')                     return 'Введите корректный адрес электронной почты';
         if (st.coerced == 'number' || st.def?.numeral) return 'Введите число в допустимом диапазоне';
         return 'Заполните поле полностью';
     }

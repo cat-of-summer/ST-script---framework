@@ -1,10 +1,8 @@
-// Автотесты чистого движка масок: node scripts/mask.test.mjs
+// Автотесты чистого движка масок: node tests/mask.test.mjs
 // Ненулевой exit-код при провале. Зависимостей нет, DOM не нужен —
-// движок это статические методы класса Mask.
+// движок это модуль src/mask/_engine.js с плоскими экспортами.
 
-import Mask from '../src/mask/index.js';
-
-const { compile, build, run, run_all, render, caret_for, cap } = Mask;
+import { compile, build, run, run_all, render, caret_for, cap } from '../src/mask/_engine.js';
 
 let failed = 0, passed = 0;
 
@@ -235,12 +233,24 @@ eq(run(cash, '1234567').raw,       '1234567',     'numeral: raw — только
 eq(run(cash, '1234567').stop_fmt,  9,             'numeral: каретка перед суффиксом');
 eq(run(cash, '1234567').units.length, 7,          'numeral: по юниту на значащую цифру');
 eq(run(cash, '1').units.length,    1,             'numeral: паддинг-нули — не юниты');
-eq(run(cash, '').formatted,        '',            'numeral: пусто → пусто');
+eq(run(cash, '').formatted,        '',            'numeral: пусто → пусто (formatted)');
 eq(run(cash, '').complete,         false,         'numeral: пусто не complete');
 eq(run(cash, '1').complete,        true,          'numeral: есть значение → complete');
 
+// ноль — это число, а не пустота
+eq(run(cash, '0').formatted,   '0,00 ₽', 'numeral: ноль → 0,00');
+eq(run(cash, '0').raw,         '0',      'numeral: raw ноля');
+eq(run(cash, '0').complete,    true,     'numeral: ноль complete');
+eq(run(cash, '00').formatted,  '0,00 ₽', 'numeral: нули каноникализируются в 0');
+eq(run(cash, '05').formatted,  '0,05 ₽', 'numeral: ведущий ноль не мешает');
+
+// скелет плейсхолдера (для placeholder:'always') строится из filler
+eq(run(cash, '').ph, '_,__ ₽', 'numeral: скелет по умолчанию (filler _)');
+const cash_ph = def({ numeral: { fraction: 2, decimal: ',', suffix: ' ₽' }, filler: '000' });
+eq(render(run(cash_ph, ''), 'always'), '0,00 ₽', 'numeral: always-скелет из filler "000"');
+
 // идемпотентность и по потоку, и по отформатированному виду
-for (let value of ['1', '123', '1234567']) {
+for (let value of ['0', '1', '123', '1234567']) {
     let r = run(cash, value);
     eq(run(cash, r.stream).formatted, r.formatted, `numeral: идемпотентность stream("${value}")`);
     eq(run(cash, r.formatted).formatted, r.formatted, `numeral: идемпотентность formatted("${value}")`);

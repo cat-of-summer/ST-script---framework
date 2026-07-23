@@ -353,8 +353,8 @@
             target: 'input[name=sum]',
             caret: 'hide',
             placeholder: 'always',
-            filler: 0,
-            mask: { numeral: { fraction: 2, group: ' ', decimal: ',', suffix: ' ₽', min: 0 } }
+            filler: '000',
+            numeral: { fraction: 2, group: ' ', decimal: ',', suffix: ' ₽', min: 0 }
         });
 
         // <input type=number> без маски: сам приводится к type=text + inputmode=numeric,
