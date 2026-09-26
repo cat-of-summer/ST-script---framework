@@ -239,11 +239,16 @@ export default class Mask {
 
         if (this.before_input(input, { type, insert, start, end }) === false) return;
 
+        let was = input.value;
+
         this.#params.placeholder == 'always' && st.def?.fixed
             ? this.#grid(input, type, start, end, is_delete ? '' : insert)
             : this.#edit(input, start, end, is_delete ? '' : insert, type);
 
         if (type == 'insertFromPaste') this.on_paste(input, this.#state_of(input, st));
+
+        if (event.defaultPrevented && input.value !== was)
+            input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: type, data: insert || null }));
     }
 
     #edit(input, fmt_start, fmt_end, insert, type) {

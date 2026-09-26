@@ -20,7 +20,7 @@
 ## 1. Описание
 
 `Modal` — класс для создания модальных окон. Каждый экземпляр порождает дерево
-нестандартных HTML-элементов (`<modal>`, `<overlay>`, `<container>`) и вставляет
+нестандартных HTML-элементов (`<modal>`, `<modal-overlay>`, `<modal-area>`, `<modal-container>`) и вставляет
 их в указанный контейнер (по умолчанию — `<body>`).
 
 **Ключевые принципы:**
@@ -42,27 +42,35 @@
 
 ```
 <modal state="hidden">          ← фиксированный слой на весь экран
-  <overlay>                     ← (опционально) затемнение/размытие фона
-  <container>                   ← позиционируемая обёртка контента
-    {content}                   ← пользовательский элемент
+  <modal-overlay>               ← (опционально) затемнение/размытие фона
+  <modal-area>                  ← слой прокрутки, выравнивает контейнер по горизонтали
+    <modal-container>           ← позиционируемая обёртка контента
+      {content}                 ← пользовательский элемент
 ```
 
 ### Inline-стили, проставляемые автоматически
 
 | Элемент | Ключевые стили |
 |---|---|
-| `<modal>` | `position: fixed; top/left/right/bottom: 0; display: none; overflow-y: auto; pointer-events: none; z-index: zIndex` |
-| `<overlay>` | `position: absolute; top/left/right/bottom: 0; background-color: rgba(0,0,0,overlay_shading); backdrop-filter: blur(overlay_blur); pointer-events: all; z-index: zIndex+1` |
-| `<container>` | `position: relative; width/height: max-content; max-width: 100vw; pointer-events: all; z-index: zIndex+2; margin-* управляется через location` |
+| `<modal>` | `position: fixed; top/left/right/bottom: 0; display: none; overflow: hidden; pointer-events: none; z-index: zIndex` |
+| `<modal-overlay>` | `position: absolute; top/left/right/bottom: 0; background-color: rgba(0,0,0,overlay_shading); backdrop-filter: blur(overlay_blur); z-index: zIndex+1` |
+| `<modal-area>` | `position: absolute; top/left/right/bottom: 0; overflow-y: auto; overflow-x: clip; display: flex; align-items: flex-start; justify-content` по горизонтали из `location`; `pointer-events: all; z-index: zIndex+2` |
+| `<modal-container>` | `position: relative; flex-shrink: 0; width/height: max-content; max-width: 100vw` (при `fluid: true` — `width: 100%; max-width: none`); `pointer-events: all; z-index: zIndex+3; margin-*` по `location` |
 | `content` | `transition: inherit` |
 
+> [!warning] Инлайн-стили не перебиваются обычным CSS
+> Правило из таблицы стилей вида `modal-container { width: 100% }` проиграет инлайну при любой
+> специфичности. Если контейнер должен тянуться на всю ширину `<modal-area>` (например, меню во
+> весь экран), передайте `fluid: true`. Без этого ширина контейнера равна ширине самого широкого
+> ребёнка, и раскладка «по окну» внутри него разъедется.
+
 > **z-index:** значение `zIndex` из параметров последовательно инкрементируется —
-> сначала для `<overlay>` (`zIndex + 1`), затем для `<container>` (`zIndex + 2`).
+> `<modal-overlay>` (`zIndex + 1`), `<modal-area>` (`zIndex + 2`), `<modal-container>` (`zIndex + 3`).
 > При нескольких модалках на одной странице используйте разные базовые `zIndex`.
 
 ### Связь DOM-элементов с экземпляром
 
-Каждый из четырёх элементов (`modal`, `overlay`, `container`, `content`) хранит
+Каждый из элементов (`modal`, `overlay`, `area`, `container`, `content`) хранит
 ссылку на экземпляр `Modal` через приватный Symbol. Получить экземпляр по
 элементу или CSS-селектору можно через `Modal.find()`.
 
@@ -125,14 +133,15 @@ new Modal(params)
 
 | Параметр | Тип | По умолчанию | Описание |
 |---|---|---|---|
-| `content` | `string \| Element` | `'<div></div>'` | HTML-строка, CSS-селектор или готовый `Element`. Если передан селектор — элемент **физически перемещается** в `<container>`. Если HTML-строка — парсится через `DOMParser`, берётся первый дочерний элемент `<body>`. |
+| `content` | `string \| Element` | `'<div></div>'` | HTML-строка, CSS-селектор или готовый `Element`. Если передан селектор — элемент **физически перемещается** в `<modal-container>`. Если HTML-строка — парсится через `DOMParser`, берётся первый дочерний элемент `<body>`. |
 | `container` | `string \| Element` | `'body'` | Куда вставить `<modal>`. Принимает CSS-селектор или `Element`. |
 
 ### Позиционирование
 
 | Параметр | Тип | По умолчанию | Описание |
 |---|---|---|---|
-| `location` | `string` | `'center center'` | Позиция `<container>` внутри `<modal>`. Задаётся двумя словами через пробел (порядок не важен): вертикаль (`top` / `bottom` / `center`) и горизонталь (`left` / `right` / `center`). Реализуется через `margin: auto` / `margin: 0` на соответствующих сторонах. |
+| `location` | `string` | `'center center'` | Позиция `<modal-container>` внутри `<modal-area>`. Задаётся двумя словами через пробел (порядок не важен): вертикаль (`top` / `bottom` / `center`) и горизонталь (`left` / `right` / `center`). Реализуется через `margin: auto` / `margin: 0` на соответствующих сторонах и `justify-content` у `<modal-area>`. |
+| `fluid` | `boolean` | `false` | Растянуть `<modal-container>` на всю ширину `<modal-area>`: `width: 100%; max-width: none` вместо `max-content` / `100vw`. Нужен, когда внутри модалки раскладка должна считаться от ширины окна, а не от контента — полноэкранное меню, шторка. Учтите: у `<modal-area>` своя полоса прокрутки (`overflow-y: auto`), и там, где она занимает место, `100%` будет уже окна на её ширину. |
 
 **Примеры значений `location`:**
 
@@ -149,14 +158,14 @@ new Modal(params)
 | Параметр | Тип | По умолчанию | Описание |
 |---|---|---|---|
 | `duration` | `number` | `0` | Длительность CSS-перехода в секундах. Применяется как `transition: all {duration}s` на `<modal>`, и наследуется дочерними элементами. |
-| `zIndex` | `number` | `1000` | Базовый z-index. `<overlay>` получает `zIndex+1`, `<container>` — `zIndex+2`. |
+| `zIndex` | `number` | `1000` | Базовый z-index. `<modal-overlay>` получает `zIndex+1`, `<modal-area>` — `zIndex+2`, `<modal-container>` — `zIndex+3`. |
 | `allow_interrupt` | `boolean` | `false` | Разрешить отмену текущей анимации при вызове обратного действия. |
 
 ### Оверлей
 
 | Параметр | Тип | По умолчанию | Описание |
 |---|---|---|---|
-| `overlay` | `boolean` | `true` | Создавать элемент `<overlay>`. При `false` — `<overlay>` отсутствует в DOM. |
+| `overlay` | `boolean` | `true` | Создавать элемент `<modal-overlay>`. При `false` — `<modal-overlay>` отсутствует в DOM. |
 | `overlay_shading` | `number` | `0.5` | Непрозрачность затемнения от `0` (прозрачный) до `1` (полностью чёрный). Используется как `rgba(0, 0, 0, N)`. |
 | `overlay_blur` | `string` | `'5px'` | Размытие фона через `backdrop-filter: blur(N)`. Передаётся любое валидное CSS-значение, например `'0px'`, `'10px'`. |
 | `overlay_scroll_lock` | `boolean` | `true` | Блокировать прокрутку страницы, пока модал открыт. Работает только при `overlay: true`. Подробнее — в разделе [10](#10-блокировка-прокрутки-страницы). |
@@ -165,7 +174,7 @@ new Modal(params)
 
 | Параметр | Тип | По умолчанию | Описание |
 |---|---|---|---|
-| `close_by_overlay` | `boolean` | `true` | Закрывать модал по клику на `<overlay>`. |
+| `close_by_overlay` | `boolean` | `true` | Закрывать модал по клику мимо контента — в любом месте `<modal-area>` вне `<modal-container>`. Работает и при `overlay: false`. |
 | `close_by_esc` | `boolean` | `true` | Закрывать модал по нажатию клавиши `Escape`. Вешает обработчик на `document`. |
 | `auto_close` | `number` | `-1` | Автоматически закрыть модал через N секунд после открытия. `-1` — выключено. |
 
@@ -173,7 +182,7 @@ new Modal(params)
 
 | Параметр | Тип | По умолчанию | Описание |
 |---|---|---|---|
-| `trigger` | `string \| null` | `null` | CSS-селектор элементов, которые будут открывать модал по клику. Привязка происходит один раз при создании (`querySelectorAll`). Динамически добавленные элементы не отслеживаются. |
+| `trigger` | `string \| null` | `null` | CSS-селектор элементов, которые будут открывать модал по клику. Привязка происходит один раз при создании (`querySelectorAll`). Динамически добавленные элементы не отслеживаются. Нажатая кнопка передаётся в `show(trigger)`, поэтому `before_show` / `on_show` получают её как `data` — по ней удобно менять заголовок или состав формы. |
 
 ### Хуки жизненного цикла
 
@@ -213,7 +222,7 @@ hide(data)
 ```
 new Modal(params)
   → before_init(params)        ← до создания DOM
-  → [создание modal, overlay, container, content, обработчиков]
+  → [создание modal, overlay, area, container, content, обработчиков]
   → on_init(params)            ← после полной инициализации
 ```
 
@@ -240,9 +249,11 @@ const modal = new Modal({
 `data` — произвольное значение, которое передаётся в `show(data)` или `hide(data)`.
 По умолчанию `null`.
 
+При открытии через `trigger` значение `data` — нажатый элемент-триггер.
+
 При закрытии через встроенные механизмы значение `data`:
 - **`action="close"` кнопка** — `null` (вызов без аргумента)
-- **Клик по overlay** — DOM-элемент `<overlay>`
+- **Клик мимо контента** (`close_by_overlay`) — объект события `MouseEvent`
 - **Клавиша ESC** — объект события `KeyboardEvent`
 - **`auto_close`** — `null`
 
@@ -255,8 +266,9 @@ const modal = new Modal({
 | Свойство | Тип | Описание |
 |---|---|---|
 | `modal` | `HTMLElement` | Элемент `<modal>` — корневой контейнер |
-| `overlay` | `HTMLElement \| undefined` | Элемент `<overlay>`. `undefined`, если `overlay: false` |
-| `container` | `HTMLElement` | Элемент `<container>` — обёртка, управляющая позицией |
+| `overlay` | `HTMLElement \| undefined` | Элемент `<modal-overlay>`. `undefined`, если `overlay: false` |
+| `area` | `HTMLElement` | Элемент `<modal-area>` — слой прокрутки и выравнивания |
+| `container` | `HTMLElement` | Элемент `<modal-container>` — обёртка, управляющая позицией |
 | `content` | `HTMLElement` | Пользовательский элемент контента |
 
 ### Геттеры
@@ -334,14 +346,14 @@ copy.show();
 
 Возвращает экземпляр `Modal`, связанный с переданным DOM-элементом или CSS-селектором.
 
-Работает для любого из четырёх элементов: `modal`, `overlay`, `container`, `content`.
+Работает для любого из элементов: `modal`, `overlay`, `area`, `container`, `content`.
 
 ```js
 // Получить экземпляр по элементу <modal>
 const instance = Modal.find(document.querySelector('modal'));
 instance.hide();
 
-// Получить экземпляр по <container>
+// Получить экземпляр по <modal-container>
 const instance2 = Modal.find(someModal.container);
 
 // Получить по CSS-селектору (ищет первый совпавший элемент)
@@ -471,7 +483,7 @@ new Modal({
 
 ## 10. Блокировка прокрутки страницы
 
-При `overlay_scroll_lock: true` (по умолчанию) и наличии `<overlay>` при открытии
+При `overlay_scroll_lock: true` (по умолчанию) и наличии `<modal-overlay>` при открытии
 модала прокрутка страницы блокируется через следующий механизм:
 
 **При открытии (`show()`):**
@@ -599,7 +611,7 @@ const modal = new Modal({
 
 ```js
 const modal = new Modal({
-    content: '#my-form',    // элемент перемещается в <container>
+    content: '#my-form',    // элемент перемещается в <modal-container>
     duration: 0.4
 });
 
@@ -607,7 +619,7 @@ modal.show();
 ```
 
 > **Внимание:** элемент физически перемещается в DOM. После закрытия он остаётся
-> внутри `<container>`, а не возвращается на исходное место.
+> внутри `<modal-container>`, а не возвращается на исходное место.
 
 ---
 
@@ -691,12 +703,12 @@ confirm_modal.show({
 ### content как CSS-селектор перемещает элемент
 
 При передаче CSS-селектора в `content` целевой элемент **физически перемещается**
-из своего исходного места в DOM в `<container>`. Он не клонируется. После
-закрытия модала элемент остаётся внутри `<container>`.
+из своего исходного места в DOM в `<modal-container>`. Он не клонируется. После
+закрытия модала элемент остаётся внутри `<modal-container>`.
 
 ### before_init вызывается до создания DOM
 
-В хуке `before_init` элементы `modal`, `overlay`, `container`, `content` ещё не
+В хуке `before_init` элементы `modal`, `overlay`, `area`, `container`, `content` ещё не
 существуют — обращение к `this.modal` и другим свойствам вернёт `undefined`.
 Используйте этот хук только для изменения параметров инициализации.
 

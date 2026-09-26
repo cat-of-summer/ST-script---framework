@@ -43,6 +43,7 @@ export default class Modal {
 
             content: `<div></div>`,
             location: 'center center',
+            fluid: false,
             trigger: null,
 
             close_by_overlay: true,
@@ -152,9 +153,9 @@ export default class Modal {
         Object.assign(this.container.style, {
             position: 'relative',
             flexShrink: '0',
-            width: 'max-content',
+            width: this.#params.fluid ? '100%' : 'max-content',
             height: 'max-content',
-            maxWidth: '100vw',
+            maxWidth: this.#params.fluid ? 'none' : '100vw',
             zIndex: ++this.#params.zIndex,
             transition: 'inherit',
             pointerEvents: 'all',

@@ -7,6 +7,7 @@ export default class Toggle {
     #methods = {};
     #timers = new WeakMap();
     #anchors = new Map();
+    #triggers = [];
     #last = null;
 
     static find = find;
@@ -31,6 +32,7 @@ export default class Toggle {
             action: 'click',
             anchor: false,
             keep_history: false,
+            group: false,
 
             before_activate:    () => {},
             on_activate:        () => {},
@@ -64,6 +66,7 @@ export default class Toggle {
 
         for (let trigger of elements(this.#params.trigger)) {
             own(trigger, this);
+            this.#triggers.push(trigger);
             expose(trigger, {
                 toggle:     () => this.toggle(trigger),
                 activate:   () => this.activate(trigger),
@@ -164,6 +167,11 @@ export default class Toggle {
             final   = on ? 'active'     : 'inactive',
             targets = this.#targets(trigger);
 
+        if (on && this.#params.group)
+            this.#triggers
+                .filter(t => t !== trigger && ['active', 'activating'].includes(t.getAttribute('state')))
+                .forEach(t => this.#act(t, false));
+
         let id = this.#anchorId(trigger);
         if (id) {
             if (on) { this.#writeHash(id); this.#last = trigger; }
@@ -178,7 +186,10 @@ export default class Toggle {
     }
 
     toggle(el) {
-        elements(el).forEach(t => this.#act(t, !['active', 'activating'].includes(t.getAttribute('state'))));
+        elements(el).forEach(t => {
+            let on = !['active', 'activating'].includes(t.getAttribute('state'));
+            if (on || this.#params.group != 'radio') this.#act(t, on);
+        });
     }
 
     activate(el)   { elements(el).forEach(t => this.#act(t, true)); }
