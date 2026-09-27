@@ -54,6 +54,8 @@ export default {
 
             self.form.app = self;
 
+            self.done(false);
+
             self.form.addEventListener('input', e => {
                 const field = e.target;
                 if (!field.name) return;
@@ -287,6 +289,13 @@ export default {
     show() {
         this.style.display = '';
     },
+    done(state = true) {
+        const slot = this.querySelector('[form-done]');
+        if (!slot) return;
+
+        this.form.hidden = state;
+        slot.hidden = !state;
+    },
     _submit() {
         const self = this;
         const form = self.form;
@@ -345,7 +354,7 @@ export default {
                     if (ev) window.location.href = data.redirect;
                     return;
                 }
-                self.dispatchEvent('form:success', { data, request }, { bubbles: true });
+                if (self.dispatchEvent('form:success', { data, request }, { bubbles: true })) self.done();
             })
             .onFailed(payload => {
                 self.dispatchEvent('form:failed', payload, { bubbles: true });

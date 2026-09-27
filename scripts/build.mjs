@@ -13,6 +13,8 @@
 //                             where <ExportName> is the name of the class in the
 //                             source (`export default class Modal` → window.Modal).
 //
+// Both get a linked source map (`<file>.map`, sources embedded) for debugging.
+//
 // Drop a new `src/<name>/index.js` and it is picked up automatically — no edits
 // here needed. Run with `--watch` to rebuild on change.
 
@@ -69,6 +71,7 @@ async function buildAll() {
       format: 'esm',
       minify: true,
       legalComments: 'none',
+      sourcemap: true,
       logLevel: 'warning',
     });
 
@@ -81,6 +84,7 @@ async function buildAll() {
       globalName: g,
       minify: true,
       legalComments: 'none',
+      sourcemap: true,
       logLevel: 'warning',
       footer: {
         js: `if(typeof ${g}!=="undefined"&&${g}&&${g}.default)globalThis.${g}=${g}.default;`,

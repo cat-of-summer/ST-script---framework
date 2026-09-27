@@ -230,6 +230,7 @@ export default class Modal {
                         position: body_inline_styles.position,
                         top: body_inline_styles.top,
                         left: body_inline_styles.left,
+                        right: body_inline_styles.right,
                         width: body_inline_styles.width,
                         scroll_Y: window.scrollY || document.documentElement.scrollTop,
                         scroll_X: window.scrollX || document.documentElement.scrollLeft
@@ -238,9 +239,10 @@ export default class Modal {
                     document.documentElement.style.scrollBehavior = 'unset';
                     Object.assign(document.body.style, {
                         position: 'fixed',
-                        width: '100vw',
+                        width: 'auto',
                         top: `-${body_inline_styles.scroll_Y}px`,
-                        left:`-${body_inline_styles.scroll_X}px`,
+                        left: `-${body_inline_styles.scroll_X}px`,
+                        right: `${body_inline_styles.scroll_X}px`,
                     });
                 }
 

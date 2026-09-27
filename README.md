@@ -23,7 +23,7 @@ two flavours per module:
 | `st_links_widget`     | `window.st_links_widget`| Links widget.                                |
 | `loader`              | `window.Loader`     | Ajax list loader (cards: подгрузка/фильтр/сортировка) via `Core.fetch`. |
 | `st_app`              | `<st-app>` element  | **Web Component** — `<script defer>` only (self-registers). |
-| `st_app/form`         | `window.form`       | Form app **config object** — register with `App.create(form)`; no `st_app` bundled. |
+| `st_app/form`         | `window.Form`       | Form app **config object** — register with `App.create(form)`; no `st_app` bundled. |
 
 > `st_widget` / `st_widget/button` are work-in-progress stubs (no output yet).
 
@@ -57,6 +57,10 @@ src/
 
 `dist/` is generated and git-ignored. It is built on `npm install` (`prepare`),
 on `npm publish` (`prepack`), and in CI to attach release artifacts.
+
+Every bundle ships with a linked source map (`*.min.js.map`, sources embedded), so
+DevTools show the original code. The unminified ESM sources are also published as
+is: `import Modal from '@cat-of-summer/st-script/src/modal/index.js'`.
 
 ## A. Use via npm
 
