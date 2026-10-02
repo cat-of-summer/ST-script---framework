@@ -16,10 +16,10 @@
 - [st_button_widget](st_button_widget/)
 - [st_links_widget](st_links_widget/)
 - [st_typograf](st_typograf/)
-- [st_validator](st_validator/)
 - [st_widget](st_widget/)
 - [toggle](toggle/)
 - [uploader](uploader/)
+- [validator](validator/)
 
 ## Файлы
 
