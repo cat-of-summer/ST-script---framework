@@ -1,6 +1,11 @@
 const SLOTS = { '0': /^[0-9]$/, 'a': /^\p{L}$/u, '*': /^[^\n]$/ };
 
-const unesc = str => str.replace(/\\(.)/g, '$1');
+// Литерал-буква или цифра — часть «кода» маски ('+7', '+375'). Сколько таких литералов ввод
+// совпал подряд с начала, пока не разошёлся, — длина узнанного кода (s.lead): по ней выбирается
+// маска страны. Разделители '(', ' ', '-' и '+' на это не влияют
+const SIGNIFICANT = /^[\p{L}\p{N}]$/u;
+
+const unesc =str => str.replace(/\\(.)/g, '$1');
 const no_g = re => re.global ? new RegExp(re.source, re.flags.replace('g', '')) : re;
 
 function scan(str, from) {
@@ -193,9 +198,12 @@ function walk(nodes, s, def) {
                 if (s.input[s.ip] === node.char) {
                     s.ip++;
                     s.consumed++;
+                    if (!s.diverged && SIGNIFICANT.test(node.char)) s.lead++;
                     accept(s, node.char, node.char, 'literal');
-                } else
+                } else {
+                    if (SIGNIFICANT.test(node.char)) s.diverged = true;
                     s.formatted += node.char;
+                }
             } else s.tail += node.char;
 
         } else if (node.type == 'slot') {
@@ -248,6 +256,7 @@ function walk(nodes, s, def) {
                 else if (s.input[s.ip] === node.from)
                     s.ip++, s.consumed++;
                 else { s.ip++; continue; }
+                if (!s.diverged) s.lead++;
                 accept(s, node.to, node.to);
                 break;
             }
@@ -322,7 +331,7 @@ function numeral(def, input_string) {
             for (let i = 1; i <= o.fraction; i++) body += filler(def, i);
         }
         return { stream: '', raw: '', formatted: '', tail: '', ph: body + o.suffix,
-            ph_slots: [], complete: false, consumed: 0, units: [], cells: [], stop_fmt: body.length };
+            ph_slots: [], complete: false, consumed: 0, lead: 0, units: [], cells: [], stop_fmt: body.length };
     }
 
     let f = o.fraction;
@@ -359,7 +368,7 @@ function numeral(def, input_string) {
     let complete = (o.min == null || value >= o.min) && (o.max == null || value <= o.max);
 
     return { stream: raw, raw, formatted, tail: '', ph: '', ph_slots: [],
-        complete, consumed: raw.length, units, cells: [], stop_fmt };
+        complete, consumed: raw.length, lead: 0, units, cells: [], stop_fmt };
 }
 
 export function run(def, input_string, ctx) {
@@ -371,7 +380,7 @@ export function run(def, input_string, ctx) {
         ip: 0,
         stream: '', raw: '', formatted: '', tail: '', ph: '',
         ph_slots: [], units: [], cells: [],
-        consumed: 0, ordinal: 0,
+        consumed: 0, lead: 0, diverged: false, ordinal: 0,
         complete: true, done: false, stop_fmt: -1
     };
 
@@ -382,7 +391,7 @@ export function run(def, input_string, ctx) {
     return {
         stream: s.stream, raw: s.raw, formatted: s.formatted, tail: s.tail,
         ph: s.ph, ph_slots: s.ph_slots, complete: s.complete, consumed: s.consumed,
-        units: s.units, cells: s.cells, stop_fmt: s.stop_fmt
+        lead: s.lead, units: s.units, cells: s.cells, stop_fmt: s.stop_fmt
     };
 }
 
@@ -396,12 +405,19 @@ export function run_all(defs, input_string, ctx = {}) {
     let best = null;
     for (let def of resolved) {
         let result = run(def, input_string, ctx);
-        if (!best
-            || result.consumed > best.result.consumed
-            || result.consumed == best.result.consumed && result.complete && !best.result.complete)
+        if (!best || better(result, best.result))
             best = { result, def, mask_id: def.key };
     }
     return best;
+}
+
+// Кто из кандидатов лучше подходит под ввод: принял больше символов → узнал более длинный
+// код ('375' у '+375' против ничего у '+7'; '+7 (7' против '+7') → заполнен.
+// При полном равенстве остаётся первая маска
+function better(a, b) {
+    return a.consumed != b.consumed ? a.consumed > b.consumed
+         : a.lead != b.lead ? a.lead > b.lead
+         : a.complete && !b.complete;
 }
 
 export function render(result, placeholder) {

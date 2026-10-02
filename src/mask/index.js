@@ -18,6 +18,20 @@ export default class Mask {
         return layout;
     }
 
+    // Атрибут mask="" — строка-шаблон либо JSON: массив строк или словарь { ключ: строка | [строки] }.
+    // Шаблоны тоже начинаются с '[' и '{' ('{*;0-}', '[0]'), поэтому JSON берётся только
+    // подходящей формы, всё остальное остаётся шаблоном
+    static #from_attr(attr) {
+        if (!/^\s*[[{]/.test(attr)) return attr;
+        let strings = v => typeof v == 'string' || Array.isArray(v) && v.every(m => typeof m == 'string');
+        try {
+            let v = JSON.parse(attr);
+            if (Array.isArray(v) ? strings(v) : v && typeof v == 'object' && Object.values(v).every(strings))
+                return v;
+        } catch {}
+        return attr;
+    }
+
     #params = {};
     #methods = {};
     #defs = null;
@@ -145,8 +159,9 @@ export default class Mask {
         if (ml != null) input.removeAttribute('maxlength');
         let max_raw = this.#params.max_raw ?? (ml != null ? +ml : null);
 
+        let attr = input.getAttribute('mask');
         let defs = this.#defs
-            ?? (input.getAttribute('mask') ? build(input.getAttribute('mask'), this.#base()) : this.#default_for(coerced));
+            ?? (attr ? build(Mask.#from_attr(attr), this.#base()) : this.#default_for(coerced));
         if (!defs) {
             console.warn('Mask: для поля не задана маска (ни в params.mask, ни в атрибуте mask)', input);
             return;

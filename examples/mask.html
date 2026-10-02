@@ -17,6 +17,8 @@
         input[is_complete="false"][progress]:not([progress="0"]) { border-color: #c33; }
         h2 { margin-top: 40px; }
         ol li { margin: 6px 0; }
+        .tel-intl { display: flex; gap: 6px; }
+        .tel-intl input { flex: 1; }
         button { grid-column: 2; justify-self: start; padding: 8px 20px; font: inherit; }
     </style>
 </head>
@@ -27,16 +29,14 @@
 <form action="/" method="GET">
     <label>Телефон РФ (8 → +7, доб.)</label> <input name="phone" type="tel">
     <label>Телефон (страна: <b id="country">?</b>)</label> <input name="intl" type="tel">
-    <label>Телефон по выбору страны</label>
-    <span>
-        <select id="country-select">
-            <option value="ru">🇷🇺 Россия</option>
-            <option value="by">🇧🇾 Беларусь</option>
-            <option value="kz">🇰🇿 Казахстан</option>
-            <option value="de">🇩🇪 Германия</option>
-        </select>
+    <label>Телефон с выбором страны (как intl-tel-input)</label>
+    <span class="tel-intl">
+        <select id="country-select" aria-label="Страна"></select>
         <input name="by_select" type="tel">
     </span>
+    <label>Телефон из разметки (JSON в mask="")</label>
+    <input name="intl_attr" type="tel"
+           mask='{"ru":["{8=>+7} (000) 000-00-00","+7 (000) 000-00-00"],"by":"+375 (00) 000-00-00","kz":"+7 (700) 000-00-00"}'>
     <label>Документ (подмаска из события: <b id="doc-kind">?</b>)</label> <input name="doc">
     <label>Дата (автодополнение, ДД.ММ.ГГГГ)</label> <input name="date" inputmode="numeric">
     <label>Дата (блоки изолированы, flow: false)</label> <input name="date2" inputmode="numeric">
@@ -87,9 +87,10 @@
     <li>Третья дата (rewrite: true): набрать «12312» — получится 12 → 3 (затёрло) → 31 → 2; клик в середину блока и набор перезаписывают блок с начала.</li>
     <li>Четвёртая дата (caret: 'hide'): кликнуть в середину блока — каретка встанет в конец этого блока; внутрь блока встать нельзя, но rewrite и изоляция блоков работают как обычно.</li>
     <li>API на самих элементах: в консоли <code>$0.raw()</code>, <code>$0.state()</code>, <code>$0.set('…')</code>, <code>$0.clear()</code> для любого поля с маской.</li>
-    <li>Телефон по выбору страны: сменить страну в select — маска переключится через set_mask.</li>
+    <li>Телефон с выбором страны: набрать «7913…» — RU, «3…» — BY (+375), «38…» — UA, «77…» — KZ, «49…» — DE; select переключается сам. Сменить страну в select — код в поле заменится, набранная часть номера сохранится.</li>
+    <li>Телефон из разметки: маска задана только JSON-словарём в атрибуте <code>mask</code>, в JS — <code>new Mask({ target })</code> без <code>mask</code>; автоподбор страны работает так же.</li>
     <li>Документ: первый символ решает вид маски прямо в событии before_input (8 → телефон, 4 → карта, буква → паспорт).</li>
-    <li>Телефон-страны: набрать «375…» — подтянется маска BY (индикатор сменится), «8…» — RU.</li>
+    <li>Телефон-страны: набрать «375…» или просто «3…» — подтянется маска BY (индикатор сменится), «8…» и «7…» — RU, «77…» — KZ.</li>
     <li>Дата-время: после полной даты набрать цифры — появится блок « 14:30». Телефон: лишние цифры откроют « доб.».</li>
     <li>Поле «Цена» (caret: 'hide'): каретки не видно, клик в середину суммы прижимает ввод к концу. Двойной клик по числу выделяет значение целиком — дальше либо заменить всё, либо стирать с конца; вырезать середину нельзя.</li>
     <li>Дата — placeholder: 'always' (скелет «ДД.ММ.ГГГГ»), остальные — placeholder: true.</li>
@@ -189,23 +190,39 @@
             caret: 'hide'
         });
 
-        // Телефон по выбору страны: select переключает маску через set_mask
-        const COUNTRY_MASKS = {
-            ru: '+7 (000) 000-00-00',
-            by: '+375 (00) 000-00-00',
-            kz: '+7 (700) 000-00-00',
-            de: '+49 (000) 000-0000'
+        // Телефон с выбором страны, как в intl-tel-input. Одна маска-словарь на все страны:
+        // по первым цифрам движок сам выбирает страну с самым длинным совпавшим кодом
+        // (3… → +375, 77… → +7 7…), ключ приходит в mask_id — по нему синхронизируется select.
+        // Выбор в select подставляет код страны перед уже набранной частью номера
+        const COUNTRIES = {
+            ru: { name: '🇷🇺 Россия',     dial: '+7',   mask: ['{8=>+7} (000) 000-00-00', '+7 (000) 000-00-00'] },
+            kz: { name: '🇰🇿 Казахстан',  dial: '+77',  mask: '+7 (700) 000-00-00' },
+            by: { name: '🇧🇾 Беларусь',   dial: '+375', mask: '+375 (00) 000-00-00' },
+            ua: { name: '🇺🇦 Украина',    dial: '+380', mask: '+380 (00) 000-00-00' },
+            uz: { name: '🇺🇿 Узбекистан', dial: '+998', mask: '+998 (00) 000-00-00' },
+            de: { name: '🇩🇪 Германия',   dial: '+49',  mask: '+49 (000) 000-0000' },
+            us: { name: '🇺🇸 США',        dial: '+1',   mask: '+1 (000) 000-0000' }
         };
 
-        const by_select = new Mask({
-            target: 'input[name=by_select]',
-            mask: COUNTRY_MASKS.ru
+        const country = document.getElementById('country-select');
+        const tel = document.querySelector('input[name=by_select]');
+
+        for (let [code, c] of Object.entries(COUNTRIES))
+            country.add(new Option(`${c.name} ${c.dial}`, code));
+
+        const intl = new Mask({
+            target: tel,
+            mask: Object.fromEntries(Object.entries(COUNTRIES).map(([code, c]) => [code, c.mask])),
+            on_input: (input, state) => { if (state.mask_id != null) country.value = state.mask_id; }
         });
 
-        document.getElementById('country-select').addEventListener('change', event => {
-            by_select.set_mask(COUNTRY_MASKS[event.target.value], 'input[name=by_select]');
-            document.querySelector('input[name=by_select]').focus();
+        country.addEventListener('change', () => {
+            intl.set(tel, COUNTRIES[country.value].dial + intl.raw(tel));
+            tel.focus();
         });
+
+        // Мульти-маска из разметки: JSON-словарь в атрибуте mask="", в JS — только target
+        new Mask({ target: 'input[name=intl_attr]' });
 
         // Ручное переключение подмаски прямо из события ввода: смотрим первый символ
         // в before_input и сами выбираем маску документа через set_mask
