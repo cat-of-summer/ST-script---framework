@@ -1,8 +1,9 @@
 const SLOTS = { '0': /^[0-9]$/, 'a': /^\p{L}$/u, '*': /^[^\n]$/ };
 
 // Литерал-буква или цифра — часть «кода» маски ('+7', '+375'). Сколько таких литералов ввод
-// совпал подряд с начала, пока не разошёлся, — длина узнанного кода (s.lead): по ней выбирается
-// маска страны. Разделители '(', ' ', '-' и '+' на это не влияют
+// совпал подряд с начала — длина узнанного кода (s.lead): по ней выбирается маска страны.
+// Если ввод разошёлся с кодом раньше первого слота, код не узнан (lead = 0); ввод, оборвавшийся
+// внутри кода ('37' для '+375'), — совпадение. Разделители '(', ' ', '-' и '+' на это не влияют
 const SIGNIFICANT = /^[\p{L}\p{N}]$/u;
 
 const unesc =str => str.replace(/\\(.)/g, '$1');
@@ -201,7 +202,11 @@ function walk(nodes, s, def) {
                     if (!s.diverged && SIGNIFICANT.test(node.char)) s.lead++;
                     accept(s, node.char, node.char, 'literal');
                 } else {
-                    if (SIGNIFICANT.test(node.char)) s.diverged = true;
+                    if (SIGNIFICANT.test(node.char)) {
+                        // Начало кода совпало, продолжение — нет ('34' против '375'): код не узнан
+                        if (!s.diverged && s.raw === '') s.lead = 0;
+                        s.diverged = true;
+                    }
                     s.formatted += node.char;
                 }
             } else s.tail += node.char;
@@ -412,12 +417,11 @@ export function run_all(defs, input_string, ctx = {}) {
 }
 
 // Кто из кандидатов лучше подходит под ввод: принял больше символов → узнал более длинный
-// код ('375' у '+375' против ничего у '+7'; '+7 (7' против '+7') → заполнен.
-// При полном равенстве остаётся первая маска
+// код в начале ввода ('375' у '+375' против ничего у '+7'; '+7 (7' против '+7').
+// Заполненность не учитывается: номер без кода остаётся у первой маски, а не перескакивает
+// на более короткую, заполнившуюся раньше. При полном равенстве остаётся первая маска
 function better(a, b) {
-    return a.consumed != b.consumed ? a.consumed > b.consumed
-         : a.lead != b.lead ? a.lead > b.lead
-         : a.complete && !b.complete;
+    return a.consumed != b.consumed ? a.consumed > b.consumed : a.lead > b.lead;
 }
 
 export function render(result, placeholder) {
