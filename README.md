@@ -18,7 +18,7 @@ two flavours per module:
 | `select`              | `window.Select`     | Custom `<select>` dropdown (hooks, multiple, hover).|
 | `mask`                | `window.Mask`       | Input masks (телефон, дата, карта, ИНН, …).       |
 | `uploader`            | `window.Uploader`   | File uploader.                                   |
-| `st_validator`        | `window.st_validator`| Form/field validation.                          |
+| `validator`           | `window.Validator`  | Field validation (`[state]`, `setCustomValidity`, hooks).|
 | `st_button_widget`    | `window.st_button_widget`| Floating button widget.                     |
 | `st_links_widget`     | `window.st_links_widget`| Links widget.                                |
 | `loader`              | `window.Loader`     | Ajax list loader (cards: подгрузка/фильтр/сортировка) via `Core.fetch`. |

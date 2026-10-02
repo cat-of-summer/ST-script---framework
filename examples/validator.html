@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Validator — валидация полей</title>
+
+  <!-- IIFE / global build (работает по file://, без CORS). Глобал: window.Validator -->
+  <script defer src="../dist/validator.min.js"></script>
+
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; }
+    form { display: flex; flex-direction: column; gap: 12px; max-width: 320px; }
+    label { display: flex; flex-direction: column; gap: 4px; }
+    input[type=text], input[type=tel], [name=TEXTAREA] { padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; }
+    code { background: #f3f3f3; padding: 1px 5px; border-radius: 4px; }
+
+    /* Класс только ставит атрибут [state] на элемент. Внешний вид — на CSS. */
+    [state="valid"]   { border-color: #2e7d32 !important; outline-color: #2e7d32; }
+    [state="invalid"] { border-color: #c62828 !important; outline-color: #c62828; }
+    label:has([state="invalid"]) { color: #c62828; }
+    label:has([state="valid"])   { color: #2e7d32; }
+
+    .error { font-size: 12px; min-height: 1em; }
+    .log { margin-top: 16px; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>Validator</h1>
+  <p>Проверка на событиях <code>events</code>; результат — атрибут <code>state</code>,
+     <code>setCustomValidity</code> (нативный submit блокируется) и хуки.</p>
+
+  <form action="/" method="GET">
+    <label>
+      CHECKBOX (проверка по click)
+      <input type="checkbox" name="CHECKBOX">
+    </label>
+    <label>
+      KEY (по атрибуту, сразу при инициализации)
+      <input type="text" name="KEY" key="1234567890">
+    </label>
+    <label>
+      PHONE
+      <input type="tel" name="PHONE" required>
+      <span class="error"></span>
+    </label>
+    <label>
+      DIV (по innerHTML, наведите курсор)
+      <div name="TEXTAREA">It was a dark and stormy night...</div>
+    </label>
+    <label>
+      EMAIL (+ обязательный атрибут required_attribute)
+      <input type="text" name="EMAIL" required_attribute>
+      <span class="error"></span>
+    </label>
+    <div>
+      <button type="submit">Отправить</button>
+      <button type="reset">Сбросить</button>
+    </div>
+  </form>
+
+  <div class="log" id="log"></div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const show_error = (el, message = '') => {
+        let error = el.closest('label').querySelector('.error');
+        if (error) error.textContent = message;
+      };
+
+      new Validator({
+        target: 'input[type=checkbox]',
+        events: ['click'],
+        test: el => el.checked,
+      });
+
+      new Validator({
+        target: 'input[name=KEY]',
+        attribute: 'key',
+        test: /^1234567890$/,
+        check_on_init: true,
+      });
+
+      new Validator({
+        target: 'input[name=PHONE]',
+        test: /^((8|\+7)[\- ]?)?(\(?\d{3}\)?[\- ]?)?[\d\- ]{7,10}$/,
+        message: 'Неверный формат телефона',
+        on_check: (el, valid, message) => show_error(el, message),
+      });
+
+      new Validator({
+        target: 'div[name=TEXTAREA]',
+        events: ['mouseover', 'mouseout'],
+        property: 'innerHTML',
+        test: /valid/,
+      });
+
+      new Validator({
+        target: 'input[name=EMAIL]',
+        property: 'value',
+        attribute: 'required_attribute',
+        test: [
+          /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+          el => !el.value.endsWith('.ru') || 'Домены .ru не принимаются',
+        ],
+        message: 'Введите e-mail',
+        on_check: (el, valid, message) => show_error(el, message),
+      });
+
+      document.querySelector('form').addEventListener('submit', e => {
+        e.preventDefault();
+        document.getElementById('log').textContent = 'Форма прошла валидацию';
+      });
+    });
+  </script>
+</body>
+</html>
