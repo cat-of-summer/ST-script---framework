@@ -13,7 +13,7 @@ two flavours per module:
 | `st_typograf`         | `window.st_typograf`| Typography fixer.                                |
 | `st_cookie`           | `window.Cookie`     | Cookie helpers.                                  |
 | `st_system`           | `window.st_system`  | Utilities (`merge`, `generate_*`).               |
-| `st_observer`         | `window.st_observer`| IntersectionObserver wrapper.                    |
+| `observer`            | `window.Observer`   | Scroll animations: `[state]`, `--progress`, stagger, cross. |
 | `toggle`              | `window.Toggle`     | State toggler (accordions, switches, hover-menus).|
 | `select`              | `window.Select`     | Custom `<select>` dropdown (hooks, multiple, hover).|
 | `mask`                | `window.Mask`       | Input masks (телефон, дата, карта, ИНН, …).       |

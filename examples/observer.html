@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Observer — анимации по скроллу: state, progress, stagger, cross, live</title>
+
+  <!-- IIFE / global build (работает по file://, без сервера). Глобал: window.Observer -->
+  <script defer src="../dist/observer.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; color: #202124; background: #fff; }
+    main { max-width: 880px; margin: 0 auto; padding: 0 16px; }
+    code { background: #f3f3f3; padding: 1px 5px; border-radius: 4px; }
+
+    /* Шапка: меняет цвет над тёмными секциями — атрибут [crossing] от cross */
+    header {
+      position: fixed; inset: 0 0 auto; z-index: 10; height: 56px; padding: 0 16px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(255,255,255,.85); backdrop-filter: blur(6px); transition: background .3s, color .3s;
+    }
+    header[crossing] { background: rgba(17,24,39,.85); color: #fff; }
+    header nav a { color: inherit; margin-left: 14px; text-decoration: none; opacity: .6; }
+    header nav a.current { opacity: 1; font-weight: 600; }
+
+    /* Прогресс чтения: --progress пишется на <main>, полоса наследует переменную */
+    .reading-bar {
+      position: fixed; top: 56px; left: 0; right: 0; height: 3px; z-index: 10;
+      background: #1a73e8; transform: scaleX(var(--progress, 0)); transform-origin: left;
+    }
+
+    .hero { height: 100vh; display: grid; place-items: center; overflow: hidden; position: relative; }
+    .hero .blob {
+      position: absolute; width: 60vmin; height: 60vmin; border-radius: 50%;
+      background: radial-gradient(circle, #c7d2fe, transparent 70%);
+      transform: translateY(calc((var(--progress, 0) - .5) * 300px));
+    }
+    .hero h1 { position: relative; font-size: clamp(32px, 6vw, 64px); margin: 0; }
+
+    section { padding: 80px 0; }
+    section.dark { background: #111827; color: #e5e7eb; }
+    section.dark main { padding: 40px 16px; }
+
+    /* Появление: прячется только before — прокрученное (after) и всё без JS остаётся видимым */
+    .fade-up { transition: opacity .6s, transform .6s; }
+    .fade-up[state="before"] { opacity: 0; transform: translateY(40px); }
+
+    .cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); margin: 20px 0; }
+    .card {
+      border: 1px solid #e8eaed; border-radius: 12px; padding: 16px; background: #fff; min-height: 120px;
+      transition: opacity .45s, transform .45s;
+    }
+    .card[state="before"] { opacity: 0; transform: translateY(24px) scale(.94); }
+    .card b { display: block; font-size: 28px; color: #1a73e8; }
+
+    button { font: inherit; padding: 10px 16px; border: 0; border-radius: 8px; background: #1a73e8; color: #fff; cursor: pointer; }
+
+    section.dark code { background: #374151; }
+    .log { font: 13px/1.5 ui-monospace, monospace; white-space: pre; background: #1f2937; border-radius: 8px; padding: 10px 12px; height: 140px; overflow: auto; }
+
+    .strip { display: flex; gap: 12px; overflow-x: auto; padding: 12px 0; scroll-snap-type: x mandatory; }
+    .strip > div {
+      flex: 0 0 220px; height: 140px; border-radius: 12px; background: #e8f0fe; scroll-snap-align: start;
+      display: grid; place-items: center; font-weight: 600;
+      opacity: calc(.25 + .75 * var(--focus, 0));
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <strong>Observer</strong>
+  <nav>
+    <a href="#intro">Появление</a>
+    <a href="#cards">Каскад</a>
+    <a href="#dark">Cross</a>
+    <a href="#strip">Ось x</a>
+  </nav>
+</header>
+<div class="reading-bar"></div>
+
+<div class="hero" observe-progress>
+  <div class="blob"></div>
+  <h1>Прокручивайте вниз</h1>
+</div>
+
+<main>
+  <section id="intro">
+    <h2 class="fade-up" observe>Появление по <code>[state]</code></h2>
+    <p class="fade-up" observe>Каждый абзац прячется по <code>[state="before"]</code> и проявляется,
+      когда его верх поднимается на 15% экрана. CSS-переход делает анимацию, Observer только ставит атрибут.</p>
+    <p class="fade-up" observe observe-start="top 50%">У этого абзаца зона переопределена атрибутом
+      <code>observe-start="top 50%"</code> — он появится, только дойдя до середины экрана.</p>
+    <p class="fade-up" observe observe-once="false">А этот без <code>once</code>: прокрутите обратно вверх — он снова спрячется.</p>
+  </section>
+
+  <section id="cards">
+    <h2>Каскад + live-подхват</h2>
+    <p>Карточки входят по очереди (<code>stagger: 0.08</code>). Кнопка добавляет новые — <code>live</code> подхватывает их без вызова <code>refresh()</code>.</p>
+    <div class="cards"></div>
+    <button id="more">Добавить 6 карточек</button>
+  </section>
+</main>
+
+<section class="dark" id="dark">
+  <main>
+    <h2>Тёмная секция</h2>
+    <p>Пока шапка над ней, у <code>&lt;header&gt;</code> стоит атрибут <code>crossing</code>.</p>
+    <p>Журнал хуков <code>on_enter</code> / <code>on_leave</code> для секций с направлением:</p>
+    <div class="log"></div>
+  </main>
+</section>
+
+<main>
+  <section id="strip">
+    <h2>Горизонтальная лента (<code>axis: 'x'</code>, <code>root</code>)</h2>
+    <p>Свой контейнер прокрутки: яркость слайда зависит от близости к центру ленты.</p>
+    <div class="strip">
+      <div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div><div>7</div><div>8</div>
+    </div>
+  </section>
+  <section style="height: 60vh"><p class="fade-up" observe>Конец страницы.</p></section>
+</main>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    let cards = document.querySelector('.cards'), counter = 0;
+    let addCards = n => {
+      for (let i = 0; i < n; i++)
+        cards.insertAdjacentHTML('beforeend', `<div class="card"><b>${++counter}</b>карточка</div>`);
+    };
+    addCards(9);
+    document.querySelector('#more').addEventListener('click', () => addCards(6));
+
+    // появление: once по умолчанию, атрибуты переопределяют для отдельных элементов
+    new Observer({ start: 'top 85%', once: true });
+
+    // каскад карточек и подхват новых
+    new Observer({ target: '.card', start: 'top 95%', once: true, stagger: 0.08, live: true });
+
+    // параллакс героя: прогресс пути через экран
+    new Observer({ target: '.hero' });
+
+    // прогресс чтения всей страницы: --progress на <body>, полоса наследует
+    new Observer({ target: 'body', start: 'top top', end: 'bottom bottom', progress: true });
+
+    // шапка над тёмной секцией
+    new Observer({ target: 'header', cross: '.dark' });
+
+    // scrollspy + журнал хуков
+    let log = document.querySelector('.log');
+    let nav = id => document.querySelector(`header nav a[href="#${id}"]`);
+    new Observer({
+      target: 'section[id]',
+      start: 'top center',
+      end: 'bottom center',
+      on_enter(el, info) {
+        nav(el.id)?.classList.add('current');
+        log.insertAdjacentText('afterbegin', `enter  #${el.id}  ${info.direction}\n`);
+      },
+      on_leave(el, info) {
+        nav(el.id)?.classList.remove('current');
+        log.insertAdjacentText('afterbegin', `leave  #${el.id}  ${info.direction} → ${info.state}\n`);
+      },
+    });
+
+    // горизонтальная лента: близость к центру → --focus
+    new Observer({
+      target: '.strip > div',
+      root: '.strip',
+      axis: 'x',
+      start: 'left right',
+      end: 'right left',
+      progress: true,
+      on_progress: (el, { progress }) => el.style.setProperty('--focus', (1 - Math.abs(progress - .5) * 2).toFixed(3)),
+    });
+  });
+</script>
+</body>
+</html>
