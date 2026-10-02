@@ -15,9 +15,9 @@
 - [select](select/)
 - [st_button_widget](st_button_widget/)
 - [st_links_widget](st_links_widget/)
-- [st_typograf](st_typograf/)
 - [st_widget](st_widget/)
 - [toggle](toggle/)
+- [typograf](typograf/)
 - [uploader](uploader/)
 - [validator](validator/)
 

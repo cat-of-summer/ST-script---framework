@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Typograf — неразрывные пробелы: предлоги, частицы, числа, сокращения, последнее слово</title>
+
+  <!-- IIFE / global build (работает по file://, без сервера). Глобал: window.Typograf -->
+  <script defer src="../dist/typograf.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+    body { font: 17px/1.6 Georgia, serif; margin: 0; color: #202124; background: #fff; }
+    main { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+    h1, h2, h3, button, .bar, .nbsp-view, label { font-family: system-ui, sans-serif; }
+    h1 { font-size: clamp(26px, 5vw, 40px); margin: 0 0 8px; }
+    h2 { margin: 48px 0 12px; font-size: 22px; }
+    h3 { margin: 0 0 6px; font-size: 14px; color: #5f6368; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+    code { background: #f3f3f3; padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+
+    .bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+           padding: 10px 0; background: rgba(255,255,255,.92); backdrop-filter: blur(6px); font-size: 14px; }
+    .bar output { margin-left: auto; color: #5f6368; }
+    @media (max-width: 600px) { .bar { position: static; } }
+
+    button { font-size: 14px; padding: 8px 12px; border: 1px solid #dadce0; border-radius: 8px; background: #fff; cursor: pointer; }
+    button:hover { background: #f1f3f4; }
+    button.primary { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+
+    .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+    .card { border: 1px solid #e8eaed; border-radius: 12px; padding: 14px 16px; min-width: 0; }
+    .card p { margin: 0; }
+
+    /* Видимые NBSP: копия текста карточки, где неразрывный пробел показан знаком ⍽ */
+    .nbsp-view { margin-top: 10px; padding: 6px 8px; border-radius: 6px; background: #f8f9fa;
+                 font-size: 13px; color: #5f6368; overflow-wrap: anywhere; }
+    .nbsp-view mark { background: #fde68a; color: #92400e; border-radius: 2px; padding: 0 1px; }
+    body:not(.show-nbsp) .nbsp-view { display: none; }
+
+    /* Резиновая колонка: ширину меняют ползунок и угол блока */
+    .elastic { resize: horizontal; overflow: auto; width: 420px; min-width: 120px; max-width: 100%;
+               border: 1px dashed #9aa0a6; border-radius: 8px; padding: 12px 16px; }
+    .elastic p { margin: 0 0 12px; }
+    .elastic p:last-child { margin: 0; }
+    .narrow-cols { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+    .narrow-cols .card { padding: 10px; font-size: 15px; }
+
+    pre { background: #f8f9fa; padding: 10px 12px; border-radius: 8px; overflow: auto; font-size: 14px; }
+    [contenteditable] { outline: 1px dashed #1a73e8; border-radius: 6px; padding: 8px; }
+    .pre-line { white-space: pre-line; }
+    .spacer { height: 250vh; display: grid; place-items: center; color: #9aa0a6; font-style: italic; }
+    .log { font: 13px/1.5 ui-monospace, monospace; white-space: pre-wrap; background: #202124; color: #e8eaed;
+           border-radius: 8px; padding: 10px 12px; height: 150px; overflow: auto; }
+    .inline-block { display: inline-block; padding: 0 6px; border: 1px solid #dadce0; border-radius: 6px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Typograf</h1>
+  <p typograf>
+    Ставит неразрывные пробелы, чтобы предлоги и союзы не висели в конце строки, частицы
+    не уходили от своих слов, а последнее слово абзаца не оставалось на строке одно.
+    Работает с <code>[typograf]</code>-целями: обрабатывает их при подходе к экрану и следит за правками текста.
+  </p>
+
+  <div class="bar">
+    <label><input type="checkbox" id="show-nbsp" checked> показать NBSP (⍽)</label>
+    <button id="destroy">destroy()</button>
+    <button id="init" class="primary" disabled>new Typograf()</button>
+    <output id="status"></output>
+  </div>
+
+  <!-- ===================================================================== -->
+  <h2>Правила по одному</h2>
+  <div class="grid" id="rules">
+    <div class="card"><h3>words — предлоги, союзы</h3>
+      <p typograf>Мы жили в доме у реки, и в саду росли яблони. А когда наступал вечер, во дворе зажигали фонарь.</p></div>
+    <div class="card"><h3>words — кавычки и скобки</h3>
+      <p typograf>Он сказал «в доме тепло» (на самом деле нет) и "на улице мороз".</p></div>
+    <div class="card"><h3>particles — к предыдущему</h3>
+      <p typograf>Он же знал, был бы рад, но разве ли это важно? Пришёл б раньше — успел бы.</p></div>
+    <div class="card"><h3>numbers</h3>
+      <p typograf>В 2024 году продано 10 000 книг за 5 месяцев, а 3 магазина закрылись.</p></div>
+    <div class="card"><h3>dash</h3>
+      <p typograf>Москва — столица России. Сезон 2010 – 2020 прошёл, а слово - через дефис - тоже тире.</p></div>
+    <div class="card"><h3>abbr</h3>
+      <p typograf>Встреча в г. Москва, ул. Ленина, дом № 5 — см. рис. 3, т. е. там же, и т. д.</p></div>
+    <div class="card"><h3>initials</h3>
+      <p typograf>Стихи написал А. С. Пушкин, а роман — Толстой Л. Н.; J. R. R. Tolkien писал прозу.</p></div>
+    <div class="card"><h3>last_word</h3>
+      <p typograf>Последнее слово этого абзаца никогда не останется на строке одно, как бы узко ни было.</p></div>
+    <div class="card"><h3>max_chain — предел цепочки (14)</h3>
+      <p typograf>А когда наступал вечер, вопреки ожиданиям, как над городом гасли огни, а и в доме было тихо.</p></div>
+    <div class="card"><h3>авторские пробелы целы</h3>
+      <p typograf>Сумма 10&nbsp;000&#8239;000 руб. и узкий пробел остаются как написано.</p></div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <h2>Сквозь inline-теги</h2>
+  <div class="grid" id="inline">
+    <div class="card"><h3>b / em / strong</h3>
+      <p typograf>Мы жили в <b>доме</b>, а <em>и</em> <strong>в</strong> саду росли яблони.</p></div>
+    <div class="card"><h3>ссылки</h3>
+      <p typograf>Подробности <a href="#">на сайте</a> и <a href="#">в</a> <a href="#">разделе</a> помощи.</p></div>
+    <div class="card"><h3>слово, разрезанное тегом</h3>
+      <p typograf>Это сло<b>во</b> доме не склеено, а <span>во</span> дворе — склеено.</p></div>
+    <div class="card"><h3>inline-block — граница</h3>
+      <p typograf>Нажмите на <span class="inline-block">кнопку в форме</span> внизу страницы.</p></div>
+    <div class="card"><h3>&lt;br&gt; — конец строки</h3>
+      <p typograf>Первая строка стихотворения<br>Вторая строка в саду<br>И третья в конце</p></div>
+    <div class="card"><h3>вложенные блоки</h3>
+      <div typograf><p>Абзац первый и в нём текст.</p><blockquote>Цитата из книги и в ней мысль.</blockquote>Хвост без тега и в конце</div></div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <h2>Что не трогается</h2>
+  <div class="grid" id="skip">
+    <div class="card"><h3>code внутри текста</h3>
+      <p typograf>Вызовите <code>a = b и в c</code> и в ответ придёт объект.</p></div>
+    <div class="card"><h3>pre</h3>
+      <div typograf><p>Пример кода и в нём пробелы:</p><pre>if (a и в b)
+    return в доме;</pre></div></div>
+    <div class="card"><h3>contenteditable</h3>
+      <div typograf><div contenteditable id="editor">Печатайте здесь и в любом месте: текст не правится под курсором.</div></div></div>
+    <div class="card"><h3>[typograf-skip]</h3>
+      <p typograf>Обычный текст в доме. <span typograf-skip>А этот в доме не трогаем.</span></p></div>
+    <div class="card"><h3>white-space: pre-line</h3>
+      <p typograf class="pre-line">Строки
+в доме
+и в саду</p></div>
+    <div class="card"><h3>textarea</h3>
+      <div typograf><textarea rows="3" style="width:100%">Текст в поле и в форме</textarea></div></div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <h2>Резиновая колонка</h2>
+  <p typograf>Тяните ползунок или правый нижний угол: склейки от ширины не зависят, но так видно, что
+    ни на одной ширине короткое слово не висит в конце строки.</p>
+  <div class="bar" style="position:static">
+    <input type="range" id="width" min="120" max="900" value="420" style="flex:1">
+    <output id="width-value">420px</output>
+  </div>
+  <div class="elastic" id="elastic" typograf>
+    <p>В небольшом доме на окраине города жил старый часовщик. Он умел делать такие часы, что они шли
+      точно и не сбивались даже в самые холодные зимы.</p>
+    <p>Каждое утро он садился за стол у окна и работал до тех пор, пока солнце не уходило за крыши
+      соседних домов. А когда наступал вечер, он откладывал инструменты и смотрел, как над городом
+      загораются первые звёзды.</p>
+    <p>Однажды к нему пришёл мальчик и принёс сломанные карманные часы. «Их подарил мне дедушка, — сказал
+      он, — но теперь они не идут». Часовщик взял часы, открыл крышку и улыбнулся: внутри всё было в
+      порядке, не хватало лишь одной маленькой детали — той, что соединяет колёсики между собой.</p>
+  </div>
+
+  <h3 style="margin-top:20px">Узкие колонки</h3>
+  <div class="narrow-cols">
+    <div class="card" typograf>Если в доме и в саду тихо, то и на душе спокойно.</div>
+    <div class="card" typograf>Он же сказал: «А. С. Пушкин родился в 1799 году».</div>
+    <div class="card" typograf>См. рис. 3 и т. д., а потом — в путь.</div>
+    <div class="card" typograf>Для всех, кто без билета, вход через двор.</div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <h2>Живые правки</h2>
+  <p typograf>Каждая кнопка меняет текст так, как это делают фреймворки и сторонние скрипты. Новый текст
+    должен остаться новым и сразу получить склейки.</p>
+  <div class="bar" style="position:static">
+    <button id="edit-data">node.data = …</button>
+    <button id="edit-text">textContent = …</button>
+    <button id="edit-html">innerHTML += …</button>
+    <button id="edit-remove">удалить последний абзац</button>
+    <button id="edit-pre">добавить &lt;pre&gt;</button>
+    <button id="edit-inline">разбить тегом</button>
+  </div>
+  <div class="card" id="live" typograf>
+    <p id="live-a">Первый абзац о том, как в доме жили и в саду гуляли.</p>
+    <p id="live-b">Второй абзац и в нём текст.</p>
+  </div>
+
+  <h3 style="margin-top:20px">Новые цели (live: true)</h3>
+  <div class="bar" style="position:static">
+    <button id="add-target">добавить абзац с [typograf]</button>
+  </div>
+  <div id="targets"></div>
+
+  <h3 style="margin-top:20px">Журнал on_apply</h3>
+  <div class="log" id="log"></div>
+
+  <!-- ===================================================================== -->
+  <h2>Ленивая обработка</h2>
+  <p typograf>Блок ниже лежит за два с половиной экрана. Он обрабатывается, когда до него остаётся меньше экрана;
+    правка в нём, пока он далеко, ждёт подхода.</p>
+  <div class="bar" style="position:static">
+    <button id="edit-lazy">правка далёкого блока</button>
+    <output id="lazy-state"></output>
+  </div>
+  <div class="spacer">↓ прокрутите ниже ↓</div>
+  <div class="card" id="lazy" typograf>
+    <p>И вот здесь, в самом низу страницы, тоже есть текст с висячими предлогами и союзами, который
+      тоже хочется собрать аккуратно. Если вы видите склейки, значит блок прошёл обработку.</p>
+  </div>
+</main>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const log = msg => { let l = $('log'); l.textContent += msg + '\n'; l.scrollTop = l.scrollHeight; };
+
+  // Копия текста с видимыми NBSP под каждой карточкой
+  function render_nbsp(el) {
+    let card = el.closest('.card') ?? el;
+    let view = card.querySelector(':scope > .nbsp-view') ?? card.appendChild(Object.assign(document.createElement('div'), { className: 'nbsp-view' }));
+    view.setAttribute('typograf-skip', '');
+    let source = card.cloneNode(true);
+    source.querySelectorAll('.nbsp-view, h3').forEach(n => n.remove());
+    let text = source.textContent.replace(/\s+/g, m => m.includes(' ') && m.length == 1 ? m : ' ').trim();
+    view.innerHTML = text.replace(/[&<>]/g, c => `&#${c.charCodeAt(0)};`).replace(/ /g, '<mark>⍽</mark>');
+  }
+
+  let typograf;
+  let applied = 0;
+
+  function init() {
+    typograf = new Typograf({
+      target: '[typograf]',
+      live: true,
+      on_apply(el) {
+        applied++;
+        $('status').textContent = `целей: ${this.elements.length}, обработок: ${applied}`;
+        log(`on_apply: ${el.id || el.tagName.toLowerCase() + (el.className ? '.' + el.className.split(' ')[0] : '')}`);
+        if (el.closest('.card') || el.classList.contains('card')) render_nbsp(el);
+        if (el.id == 'lazy') $('lazy-state').textContent = 'обработан: ' + new Date().toLocaleTimeString();
+      },
+    });
+    window.typograf = typograf;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    init();
+
+    $('show-nbsp').addEventListener('change', e => document.body.classList.toggle('show-nbsp', e.target.checked));
+    document.body.classList.add('show-nbsp');
+
+    $('destroy').addEventListener('click', () => {
+      typograf.destroy();
+      document.querySelectorAll('.card [typograf], .card[typograf]').forEach(render_nbsp);
+      $('destroy').disabled = true; $('init').disabled = false;
+      $('status').textContent = 'destroy: исходный текст возвращён';
+    });
+    $('init').addEventListener('click', () => {
+      init();
+      $('destroy').disabled = false; $('init').disabled = true;
+    });
+
+    $('width').addEventListener('input', e => {
+      $('elastic').style.width = e.target.value + 'px';
+      $('width-value').textContent = e.target.value + 'px';
+    });
+
+    $('edit-data').addEventListener('click', () => {
+      $('live-a').firstChild.data = 'Текст заменён через node.data: мы ушли в лес и на поляну за грибами.';
+    });
+    $('edit-text').addEventListener('click', () => {
+      $('live-b').textContent = 'Текст заменён через textContent: он же пришёл в 5 часов к дому № 7.';
+    });
+    $('edit-html').addEventListener('click', () => {
+      $('live').insertAdjacentHTML('beforeend', '<p>Абзац добавлен через innerHTML и в нём <b>тоже</b> есть склейки в конце</p>');
+    });
+    $('edit-remove').addEventListener('click', () => {
+      let ps = $('live').querySelectorAll('p');
+      if (ps.length) ps[ps.length - 1].remove();
+    });
+    $('edit-pre').addEventListener('click', () => {
+      $('live').insertAdjacentHTML('beforeend', '<pre>код и в нём пробелы в доме</pre>');
+    });
+    $('edit-inline').addEventListener('click', () => {
+      let p = $('live').querySelector('p');
+      if (p) p.innerHTML = 'Теперь короткое слово в <b>теге</b>, а <i>и</i> <u>в</u> саду тоже';
+    });
+
+    let n = 0;
+    $('add-target').addEventListener('click', () => {
+      let card = document.createElement('div');
+      card.className = 'card';
+      card.setAttribute('typograf', '');
+      card.textContent = `Новая цель № ${++n}: добавлена в DOM и в ней тоже должны быть склейки в конце`;
+      $('targets').append(card);
+    });
+
+    $('edit-lazy').addEventListener('click', () => {
+      $('lazy').querySelector('p').firstChild.data = 'Правка, сделанная издалека: в доме и в саду. Она применится при подходе к экрану.';
+      $('lazy-state').textContent = 'правка сделана, блок далеко';
+    });
+  });
+</script>
+</body>
+</html>

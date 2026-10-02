@@ -10,7 +10,7 @@ two flavours per module:
 | Module                | Global / element    | Notes                                            |
 | --------------------- | ------------------- | ------------------------------------------------ |
 | `st_modal`            | `window.Modal`      | Modal windows.                                   |
-| `st_typograf`         | `window.st_typograf`| Typography fixer.                                |
+| `typograf`            | `window.Typograf`   | Неразрывные пробелы: предлоги, частицы, числа, последнее слово. |
 | `st_cookie`           | `window.Cookie`     | Cookie helpers.                                  |
 | `st_system`           | `window.st_system`  | Utilities (`merge`, `generate_*`).               |
 | `observer`            | `window.Observer`   | Scroll animations: `[state]`, `--progress`, stagger, cross. |
@@ -90,7 +90,7 @@ Per-module (рекомендуется — только то, что нужно)
 
 ```js
 import st_modal from '@cat-of-summer/st-script/st_modal';
-import st_typograf from '@cat-of-summer/st-script/st_typograf';
+import Typograf from '@cat-of-summer/st-script/typograf';
 
 const modal = new st_modal({ content: '#promo', overlay: true });
 ```
