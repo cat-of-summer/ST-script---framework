@@ -12,7 +12,7 @@ two flavours per module:
 | `st_modal`            | `window.Modal`      | Modal windows.                                   |
 | `typograf`            | `window.Typograf`   | Неразрывные пробелы: предлоги, частицы, числа, последнее слово. |
 | `st_cookie`           | `window.Cookie`     | Cookie helpers.                                  |
-| `st_system`           | `window.st_system`  | Utilities (`merge`, `generate_*`).               |
+| `core`                | `window.Core`       | Utilities (`merge`, `getRandomChars`, `uuid`, `fetch`). |
 | `observer`            | `window.Observer`   | Scroll animations: `[state]`, `--progress`, stagger, cross. |
 | `toggle`              | `window.Toggle`     | State toggler (accordions, switches, hover-menus).|
 | `select`              | `window.Select`     | Custom `<select>` dropdown (hooks, multiple, hover).|
@@ -58,8 +58,11 @@ src/
 `dist/` is generated and git-ignored. It is built on `npm install` (`prepare`),
 on `npm publish` (`prepack`), and in CI to attach release artifacts.
 
-Every bundle ships with a linked source map (`*.min.js.map`, sources embedded), so
-DevTools show the original code. The unminified ESM sources are also published as
+Every bundle ships with a source map (`*.min.js.map`, sources embedded). ESM builds
+link it via `//# sourceMappingURL`, so DevTools pick it up automatically. IIFE builds
+carry no link comment: they are often concatenated into a site-wide bundle, where a
+relative link would 404 — attach the `.map` in DevTools by hand when debugging.
+The unminified ESM sources are also published as
 is: `import Modal from '@cat-of-summer/st-script/src/modal/index.js'`.
 
 ## A. Use via npm

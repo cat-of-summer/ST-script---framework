@@ -84,11 +84,25 @@ export default class Core {
         for (const event of Object.keys(events))
             api[event] = cb => (events[event].push(cb), api);
 
-        const handle_error = (err) => {
+        // Тело ответа — одинаково для успеха и ошибки. При заданном responseType
+        // XHR не даёт читать responseText (InvalidStateError), берём response.
+        const parse = (xhr) => {
+            if (xhr.responseType) return xhr.response;
+            const type = xhr.getResponseHeader('Content-Type') || params.response_type || '';
+            if (type.includes('/json'))
+                try { return JSON.parse(xhr.responseText) } catch (e) { return xhr.responseText }
+            if (type.includes('/xml'))
+                return new DOMParser().parseFromString(xhr.responseText, 'application/xml');
+            if (type.includes('/html'))
+                return new DOMParser().parseFromString(xhr.responseText, 'text/html');
+            return xhr.responseText;
+        };
+
+        const handle_error = (err, response) => {
             if (done) return;
             done = true;
             const payload = err instanceof XMLHttpRequest
-                ? { status: err.status, status_text: err.statusText, response: err.responseText, request: err }
+                ? { status: err.status, status_text: err.statusText, response: response === undefined ? parse(err) : response, request: err }
                 : { status: undefined, status_text: '', response: err };
             fire('onFailed', payload);
             reject(payload);
@@ -134,26 +148,13 @@ export default class Core {
                 request.onreadystatechange = () => {
                     if (request.readyState !== 4) return;
 
-                    let data;
+                    const data = parse(request);
                     if (request.status >= 200 && request.status < 300) {
-                        if (request.responseType)
-                            data = request.response;
-                        else {
-                            const type = request.getResponseHeader('Content-Type') || params.response_type || '';
-                            if (type.includes('/json'))
-                                try { data = JSON.parse(request.responseText) } catch (e) { data = request.responseText }
-                            else if (type.includes('/xml'))
-                                data = new DOMParser().parseFromString(request.responseText, 'application/xml');
-                            else if (type.includes('/html'))
-                                data = new DOMParser().parseFromString(request.responseText, 'text/html');
-                            else
-                                data = request.responseText;
-                        }
                         fire('onSuccess', { data, request });
                         done = true;
                         resolve({ data, request });
                     } else
-                        handle_error(request);
+                        handle_error(request, data);
 
                     fire('onComplete', { data, request });
                 };

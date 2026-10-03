@@ -1,12 +1,24 @@
-# st_system.js
+# index.js
 
 ## Описание
 
-Набор статических утилит, используемых внутри других классов библиотеки.
+`Core` — набор статических утилит: глубокое слияние, случайные строки, UUID и AJAX-обёртка `fetch`. Используется внутри других модулей библиотеки (например, `Loader` грузит данные через `Core.fetch`) и доступен снаружи.
+
+Подключение:
+
+```js
+// ESM / npm
+import Core from '@cat-of-summer/st-script/core';
+```
+
+```html
+<!-- CDN / IIFE: объявляет глобальный Core -->
+<script defer src="dist/core.min.js"></script>
+```
 
 ## Публичные статические методы
 
-### `st_system.merge(...objects)`
+### `Core.merge(...objects)`
 
 Глубокое слияние. Принимает любое количество аргументов и сливает их слева направо, возвращая новый объект (входы не мутируются).
 
@@ -14,20 +26,29 @@
 - Если на одном ключе с обеих сторон оказались функции — они компонуются: результат вызывается с теми же аргументами и сам сливается.
 - Во всех остальных случаях (скаляры, `null`, несовпадающие типы, экземпляры классов, `Date`) побеждает позднее значение.
 
-### `st_system.generate_unique_prefix(params?)`
+### `Core.getRandomChars(params?)`
 
-Генерирует случайную строку.
+Случайная строка на `crypto.getRandomValues`.
 
 | Параметр | По умолчанию | Описание |
 |---|---|---|
 | `params.length` | `16` | Длина строки |
 | `params.characters` | `A-Za-z0-9` | Набор символов |
 
-### `st_system.fetch(params)`
+### `Core.uuid(version?)`
+
+UUID в каноническом виде `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`.
+
+| `version` | Что выдаёт |
+|---|---|
+| `7` (по умолчанию) | UUIDv7: первые 48 бит — время `Date.now()` в мс, остальное случайно. Сортируется по времени создания |
+| `4` | UUIDv4: полностью случайный |
+
+### `Core.fetch(params)`
 
 Обёртка над `XMLHttpRequest`. Возвращает thenable-объект с управлением запросом и событиями. Сам запрос уходит в микрозадаче (`queueMicrotask`), поэтому обработчики событий можно навешивать цепочкой сразу после вызова.
 
-Аргументом можно передать как объект параметров, так и `HTMLFormElement` — тогда `url`, `method` и `data` берутся из атрибутов формы (`action`, `method`) и её полей.
+Аргументом можно передать как объект параметров, так и `HTMLFormElement` — тогда `url`, `method` и `data` берутся из атрибутов формы (`action`, `method`) и её полей, включая скрытые.
 
 **Параметры (`params`):**
 
@@ -47,7 +68,10 @@
 - Обычный объект при `GET` — сериализуется в query-строку, тело становится `null`.
 - Обычный объект при остальных методах — отправляется как JSON; если `Content-Type` не задан, выставляется `application/json`.
 
-**Разбор ответа:** при заданном `response_type` берётся `request.response`. Иначе по заголовку `Content-Type`: `*/json` → `JSON.parse`, `*/xml` → `DOMParser` (XML), `*/html` → `DOMParser` (HTML), иначе — текст.
+**Разбор ответа** — одинаковый для успеха и ошибки: `data` в `on_success`/`on_complete` и `response` в `on_failed` получаются одним и тем же способом.
+
+- Задан `response_type` — берётся `request.response` (для `'json'` это уже объект или `null`).
+- Иначе по заголовку `Content-Type`: `*/json` → `JSON.parse` (тело, которое не разобралось, остаётся строкой), `*/xml` → `Document` (XML), `*/html` → `Document` (HTML), иначе — текст.
 
 **Колбэки** можно задать как в `params`, так и навесить методами возвращаемого объекта:
 
@@ -55,13 +79,18 @@
 |---|---|---|---|
 | `before_send` | `.beforeSend(cb)` | Перед отправкой | `params` |
 | `on_send` | `.onSend(cb)` | Сразу после `send()` | `{ detail: params }` |
-| `on_success` | `.onSuccess(cb)` | Статус 2xx | `{ data, request }` |
-| `on_complete` | `.onComplete(cb)` | После завершения (успех или ошибка) | `{ data, request }` |
-| `on_failed` | `.onFailed(cb)` | Ошибка сети/таймаут/не-2xx | `{ status, status_text, response, request }` |
+| `on_success` | `.onSuccess(cb)` | Статус 2xx | `{ data, request }`, `data` — разобранное тело |
+| `on_complete` | `.onComplete(cb)` | Запрос завершён (`readyState` 4) — при любом статусе, включая сетевую ошибку | `{ data, request }`, `data` — разобранное тело |
+| `on_failed` | `.onFailed(cb)` | Не-2xx, сетевая ошибка, таймаут, исключение при подготовке | `{ status, status_text, response, request }` |
+
+Поля payload `on_failed`:
+
+- `response` — разобранное тело ответа (см. выше): сервер ответил на 422 JSON-ом — придёт объект, текстом — строка.
+- `status` — HTTP-статус; `0` при сетевой ошибке и таймауте (тело тогда пустое); `undefined`, если исключение случилось до отправки — в этом случае `response` содержит само исключение, а `request` отсутствует.
 
 **Возвращаемый объект (`api`):**
 
-- `.then(onFulfilled, onRejected)`, `.catch(onRejected)`, `.finally(fn)` — объект является thenable, успех резолвит `{ data, request }`, ошибка реджектит payload `onFailed`.
+- `.then(onFulfilled, onRejected)`, `.catch(onRejected)`, `.finally(fn)` — объект является thenable, успех резолвит `{ data, request }`, ошибка реджектит payload `on_failed`.
 - `.abort()` — прерывает запрос.
 - `.beforeSend / .onSend / .onSuccess / .onComplete / .onFailed` — регистрируют дополнительные обработчики, возвращают `api` (можно чейнить).
 
@@ -71,27 +100,29 @@
 // Глубокое слияние
 const defaults = { a: 1, b: { c: 10, d: 20 } };
 const overrides = { b: { c: 99 }, e: 5 };
-const result = st_system.merge(defaults, overrides);
+const result = Core.merge(defaults, overrides);
 // { a: 1, b: { c: 99, d: 20 }, e: 5 }
 
-// Уникальный префикс
-const id = st_system.generate_unique_prefix({ length: 8 }); // 'aB3xKpQm'
+// Случайная строка и UUID
+const id = Core.getRandomChars({ length: 8 }); // 'aB3xKpQm'
+const key = Core.uuid();                       // '019a…-…' (v7)
 
 // Запрос с колбэками в параметрах
-st_system.fetch({
+Core.fetch({
     url: '/api/users',
     method: 'POST',
     data: { name: 'Alex' },
     on_success: ({ data }) => console.log(data),
-    on_failed:  ({ status }) => console.error('Ошибка', status),
+    // сервер отвечает на 422 JSON-ом { errors: {...} } — response уже объект
+    on_failed:  ({ status, response }) => status == 422 && show_errors(response.errors),
 });
 
 // Цепочка и Promise-интерфейс
-st_system.fetch({ url: '/api/users', response_type: 'json' })
+Core.fetch({ url: '/api/users', response_type: 'json' })
     .onSuccess(({ data }) => render(data))
     .catch(({ status_text }) => console.error(status_text));
 
 // Отправка формы как есть
-const req = st_system.fetch(document.querySelector('form'));
-req.then(({ data }) => console.log(data));
+Core.fetch(document.querySelector('form'))
+    .then(({ data }) => console.log(data), ({ response }) => console.error(response));
 ```

@@ -71,7 +71,7 @@ Lifecycle-хуки `before_init` / `on_init` / `before_load` / `on_failed` / `on
 | `on_load` | `response, data, request` | После успеха, до рендера. Вернёт значение → заменит `data` (дедуп/фильтр/сорт); иначе сайд-эффекты | ✓ |
 | `before_paste` | `nodes` | После рендера, до вставки | ✓ |
 | `on_paste` | `nodes, response` | После вставки (вешать listeners) | ✓ |
-| `on_failed` | `payload` | При ошибке/таймауте | — |
+| `on_failed` | `payload` | При ошибке/таймауте. Payload — как у `Core.fetch`: `{ status, status_text, response, request }`, `response` — разобранное тело ответа (JSON → объект) | — |
 | `on_complete` | `payload` | По завершении (успех или ошибка) | — |
 
 ## Публичные методы и свойства
