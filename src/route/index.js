@@ -29,8 +29,14 @@ export default class Route {
             match_all: true,
             strict_mode: true,
 
+            // static — один разбор адреса при загрузке; history и hash — SPA:
+            // navigate(), переходы назад/вперёд, перехват ссылок.
+            mode: 'static',
+            intercept_links: true,
+
             before_init: () => {},
             on_init:     () => {},
+            not_found:   () => {},
 
             ...params
         };
@@ -52,7 +58,73 @@ export default class Route {
         else
             queueMicrotask(() => this.#dispatch());
 
+        if (this.#spa()) {
+            window.addEventListener(this.#params.mode === 'hash' ? 'hashchange' : 'popstate', () => this.#dispatch());
+
+            if (this.#params.intercept_links)
+                document.addEventListener('click', e => this.#intercept(e));
+        }
+
         this.on_init(this.#params);
+    }
+
+    #spa() {
+        return this.#params.mode === 'history' || this.#params.mode === 'hash';
+    }
+
+    navigate(url, { replace = false } = {}) {
+        if (!this.#spa()) {
+            location[replace ? 'replace' : 'assign'](url);
+            return;
+        }
+
+        if (this.#params.mode === 'hash') {
+            let hash = '#' + String(url).replace(/^#/, '');
+            if (hash === location.hash) return this.#dispatch();
+            if (replace)
+                history.replaceState(history.state, '', hash);
+            else
+                history.pushState(history.state, '', hash);
+        } else
+            history[replace ? 'replaceState' : 'pushState'](null, '', url);
+
+        this.#dispatch();
+    }
+
+    #intercept(e) {
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
+        let link = e.target.closest?.('a[href]');
+        if (!link || link.target && link.target !== '_self' || link.hasAttribute('download') || /\bexternal\b/.test(link.rel)) return;
+
+        let raw = link.getAttribute('href');
+        if (this.#params.mode === 'hash') {
+            if (!raw.startsWith('#')) return;
+            e.preventDefault();
+            this.navigate(raw);
+            return;
+        }
+
+        let url = new URL(link.href, location.href);
+        if (url.origin !== location.origin) return;
+        if (!url.pathname.startsWith('/' + this.#trim(this.#params.point))) return;
+        if (url.pathname === location.pathname && url.search === location.search && url.hash) return;
+
+        e.preventDefault();
+        this.navigate(url.pathname + url.search + url.hash);
+    }
+
+    // Текущий адрес: в hash-режиме путь и query живут после #.
+    #read() {
+        if (this.#params.mode !== 'hash')
+            return { path: location.pathname, search: location.search };
+
+        let hash = location.hash.slice(1) || '/';
+        let index = hash.indexOf('?');
+
+        return index === -1
+            ? { path: hash, search: '' }
+            : { path: hash.slice(0, index) || '/', search: hash.slice(index) };
     }
 
     #current() {
@@ -153,12 +225,17 @@ export default class Route {
     }
 
     #dispatch() {
-        if (this.#dispatched) return;
+        if (this.#dispatched && !this.#spa()) return;
         this.#dispatched = true;
 
-        this.#path = location.pathname;
+        let { path, search } = this.#read();
+
+        this.#path = path;
         this.#url = location.href;
-        this.query = Object.fromEntries(new URLSearchParams(location.search));
+        this.query = Object.fromEntries(new URLSearchParams(search));
+        this.params = {};
+
+        let matched = false;
 
         this.#emit(this.#signal(), { name: this.#params.name, path: this.#path, query: this.query, url: this.#url });
 
@@ -174,6 +251,7 @@ export default class Route {
             if (route.middlewares.some(mid => !mid.call(this, ...values)))
                 continue;
 
+            matched = true;
             route.closure.call(this, ...values);
 
             let detail = {
@@ -192,6 +270,11 @@ export default class Route {
             if (route.uri)   this.#emit(this.#matchEvent(route.uri), detail);
 
             if (!this.#params.match_all) break;
+        }
+
+        if (!matched) {
+            this.not_found(this.#path);
+            this.#emit(this.#matchEvent('404'), { name: this.#params.name, path: this.#path, query: this.query, url: this.#url });
         }
     }
 

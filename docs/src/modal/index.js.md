@@ -1,4 +1,4 @@
-# modal.js
+# modal
 
 ## Содержание
 
@@ -53,7 +53,7 @@
 | Элемент | Ключевые стили |
 |---|---|
 | `<modal>` | `position: fixed; top/left/right/bottom: 0; display: none; overflow: hidden; pointer-events: none; z-index: zIndex` |
-| `<modal-overlay>` | `position: absolute; top/left/right/bottom: 0; background-color: rgba(0,0,0,overlay_shading); backdrop-filter: blur(overlay_blur); z-index: zIndex+1` |
+| `<modal-overlay>` | `position: absolute; top/left/right/bottom: 0; background-color: var(--modal-overlay-color, rgba(0,0,0,overlay_shading)); backdrop-filter: var(--modal-overlay-filter, blur(overlay_blur)); z-index: zIndex+1` |
 | `<modal-area>` | `position: absolute; top/left/right/bottom: 0; overflow-y: auto; overflow-x: clip; display: flex; align-items: flex-start; justify-content` по горизонтали из `location`; `pointer-events: all; z-index: zIndex+2` |
 | `<modal-container>` | `position: relative; flex-shrink: 0; width/height: max-content; max-width: 100vw` (при `fluid: true` — `width: 100%; max-width: none`); `pointer-events: all; z-index: zIndex+3; margin-*` по `location` |
 | `content` | `transition: inherit` |
@@ -63,6 +63,17 @@
 > специфичности. Если контейнер должен тянуться на всю ширину `<modal-area>` (например, меню во
 > весь экран), передайте `fluid: true`. Без этого ширина контейнера равна ширине самого широкого
 > ребёнка, и раскладка «по окну» внутри него разъедется.
+
+> [!tip] Цвет затемнения из CSS
+> Фон и размытие оверлея берутся из CSS-переменных, а параметры `overlay_shading` и `overlay_blur` —
+> только запасные значения. Тема задаётся без `!important`:
+>
+> ```css
+> modal-overlay {
+>     --modal-overlay-color: rgb(1 4 9 / .7);
+>     --modal-overlay-filter: blur(2px);
+> }
+> ```
 
 > **z-index:** значение `zIndex` из параметров последовательно инкрементируется —
 > `<modal-overlay>` (`zIndex + 1`), `<modal-area>` (`zIndex + 2`), `<modal-container>` (`zIndex + 3`).
@@ -113,8 +124,11 @@ hidden ──────────► showing ──────────�
 
 ### allow_interrupt
 
-По умолчанию (`allow_interrupt: false`) вызов `show()` во время анимации закрытия
-(`hiding`) и вызов `hide()` во время анимации открытия (`showing`) игнорируются.
+По умолчанию (`allow_interrupt: false`) вызов `hide()` во время анимации открытия
+(`showing`) игнорируется. Вызов `show()` во время закрытия не теряется: он
+откладывается и выполняется сразу после перехода в `hidden`, с тем же `data`.
+Так одно окно подтверждения можно открыть повторно сразу после закрытия. Новый
+`hide()` отменяет отложенный показ.
 
 При `allow_interrupt: true` эти вызовы отменяют текущую анимацию и стартуют
 обратную, что позволяет реализовать плавный реверс.
@@ -159,15 +173,15 @@ new Modal(params)
 |---|---|---|---|
 | `duration` | `number` | `0` | Длительность CSS-перехода в секундах. Применяется как `transition: all {duration}s` на `<modal>`, и наследуется дочерними элементами. |
 | `zIndex` | `number` | `1000` | Базовый z-index. `<modal-overlay>` получает `zIndex+1`, `<modal-area>` — `zIndex+2`, `<modal-container>` — `zIndex+3`. |
-| `allow_interrupt` | `boolean` | `false` | Разрешить отмену текущей анимации при вызове обратного действия. |
+| `allow_interrupt` | `boolean` | `false` | Разрешить отмену текущей анимации при вызове обратного действия. Без него `show()` во время закрытия откладывается до `hidden`. |
 
 ### Оверлей
 
 | Параметр | Тип | По умолчанию | Описание |
 |---|---|---|---|
 | `overlay` | `boolean` | `true` | Создавать элемент `<modal-overlay>`. При `false` — `<modal-overlay>` отсутствует в DOM. |
-| `overlay_shading` | `number` | `0.5` | Непрозрачность затемнения от `0` (прозрачный) до `1` (полностью чёрный). Используется как `rgba(0, 0, 0, N)`. |
-| `overlay_blur` | `string` | `'5px'` | Размытие фона через `backdrop-filter: blur(N)`. Передаётся любое валидное CSS-значение, например `'0px'`, `'10px'`. |
+| `overlay_shading` | `number` | `0.5` | Непрозрачность затемнения от `0` (прозрачный) до `1` (полностью чёрный). Используется как `rgba(0, 0, 0, N)`, если не задана CSS-переменная `--modal-overlay-color`. |
+| `overlay_blur` | `string` | `'5px'` | Размытие фона через `backdrop-filter: blur(N)`, если не задана CSS-переменная `--modal-overlay-filter`. Передаётся любое валидное CSS-значение, например `'0px'`, `'10px'`. |
 | `overlay_scroll_lock` | `boolean` | `true` | Блокировать прокрутку страницы, пока модал открыт. Работает только при `overlay: true`. Подробнее — в разделе [10](#10-блокировка-прокрутки-страницы). |
 
 ### Закрытие
@@ -175,7 +189,7 @@ new Modal(params)
 | Параметр | Тип | По умолчанию | Описание |
 |---|---|---|---|
 | `close_by_overlay` | `boolean` | `true` | Закрывать модал по клику мимо контента — в любом месте `<modal-area>` вне `<modal-container>`. Работает и при `overlay: false`. |
-| `close_by_esc` | `boolean` | `true` | Закрывать модал по нажатию клавиши `Escape`. Вешает обработчик на `document`. |
+| `close_by_esc` | `boolean` | `true` | Закрывать модал по нажатию клавиши `Escape`. При нескольких открытых окнах закрывается только верхнее (открытое последним). Если у верхнего окна `close_by_esc: false`, Esc ничего не закрывает. |
 | `auto_close` | `number` | `-1` | Автоматически закрыть модал через N секунд после открытия. `-1` — выключено. |
 
 ### Триггеры
@@ -284,7 +298,8 @@ const modal = new Modal({
 
 Открывает модал. Запускает машину состояний `hidden → showing → shown`.
 
-- Игнорируется, если текущее состояние не `'hidden'` (а при `allow_interrupt: false` — и не `'hiding'`).
+- Игнорируется, если окно уже открыто или открывается.
+- Во время закрытия при `allow_interrupt: false` откладывается и выполняется после `hidden`; при `allow_interrupt: true` прерывает закрытие.
 - Если `overlay_scroll_lock: true` и `overlay` присутствует — блокирует прокрутку.
 - Если `auto_close > 0` — запускает таймер автозакрытия.
 
@@ -367,8 +382,9 @@ const instance3 = Modal.find('modal');
 
 ## 8. action="close"
 
-Любой элемент с атрибутом `action="close"`, находящийся **внутри `content`** на
-момент инициализации, автоматически получает обработчик `click → hide()`.
+Клик по любому элементу с атрибутом `action="close"` внутри `content` (или по его
+потомку) вызывает `hide()`. Обработчик делегирован на `content`, поэтому кнопки,
+добавленные или пересозданные позже (например, шаблоном `App`), тоже работают.
 
 ```html
 <div>
@@ -379,10 +395,6 @@ const instance3 = Modal.find('modal');
     <span action="close">✕</span>
 </div>
 ```
-
-> **Важно:** привязка происходит один раз при вызове конструктора
-> (`querySelectorAll('[action="close"]')`). Элементы, добавленные в `content`
-> динамически после инициализации, не получат этот обработчик автоматически.
 
 ---
 
@@ -723,19 +735,6 @@ confirm_modal.show({
 обработчик автоматически. Решение — добавлять обработчики вручную или
 использовать делегирование событий.
 
-### close_by_esc слушает document — закроет все модалки
-
-При `close_by_esc: true` обработчик `keydown` вешается на `document`. Если
-открыть несколько модалов одновременно, нажатие `Escape` вызовет `hide()` у
-каждого из них. При необходимости управляйте этим через `close_by_esc: false`
-и собственный обработчик.
-
-### action="close" обнаруживается только при инициализации
-
-`querySelectorAll('[action="close"]')` выполняется один раз в конструкторе.
-Если добавить кнопку закрытия в `content` позднее, её нужно будет привязать
-вручную: `button.addEventListener('click', () => modal.hide())`.
-
 ### display: none сбрасывается при каждом show()
 
 Перед запуском анимации `<modal>` получает `display: flex`. После завершения
@@ -745,7 +744,5 @@ confirm_modal.show({
 ### auto_close и duration используют один setTimeout
 
 При `duration > 0` и `auto_close > 0` внутренний таймер `timeout` используется
-совместно. Вызов `show()` после завершения `auto_close`, но до окончания
-анимации закрытия будет проигнорирован (состояние ещё `'hiding'`). Убедитесь,
-что `auto_close > duration`.
+совместно. Убедитесь, что `auto_close > duration`.
 

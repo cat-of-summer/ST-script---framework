@@ -10,8 +10,26 @@ export default class Modal {
     #params = {};
     #methods = {};
     #state = 'hidden';
+    #pending_show = null;
+    // Куда идёт окно. Меняется синхронно, а state — только в requestAnimationFrame,
+    // поэтому show() сразу после hide() видит закрытие по #target.
+    #target = 'hidden';
 
     static find = find;
+
+    // Открытые окна в порядке открытия: Esc закрывает только верхнее.
+    static #open = [];
+    static #esc_bound = false;
+
+    static #bind_esc() {
+        if (Modal.#esc_bound) return;
+        Modal.#esc_bound = true;
+        document.addEventListener('keydown', e => {
+            if (e.code !== 'Escape' && e.keyCode !== 27) return;
+            let top = Modal.#open[Modal.#open.length - 1];
+            if (top?.params.close_by_esc) top.hide(e);
+        });
+    }
 
     get state() {return this.#state;}
     get params() {return this.#params;}
@@ -110,8 +128,8 @@ export default class Modal {
                 left: '0',
                 right: '0',
                 bottom: '0',
-                backgroundColor: `rgba(0, 0, 0, ${this.#params.overlay_shading})`,
-                backdropFilter: `blur(${this.#params.overlay_blur})`,
+                backgroundColor: `var(--modal-overlay-color, rgba(0, 0, 0, ${this.#params.overlay_shading}))`,
+                backdropFilter: `var(--modal-overlay-filter, blur(${this.#params.overlay_blur}))`,
                 zIndex: ++this.#params.zIndex,
                 transition: 'inherit',
             });
@@ -178,8 +196,10 @@ export default class Modal {
         own(this.content, this);
         this.content.style.transition = 'inherit';
 
-        this.content.querySelectorAll(`[action="close"]`).forEach(close_button => {
-            close_button.addEventListener('click', () => this.hide());
+        // Делегирование: кнопки, появившиеся или пересозданные позже (App, innerHTML), тоже работают.
+        this.content.addEventListener('click', e => {
+            let close_button = e.target.closest?.('[action="close"]');
+            if (close_button && this.content.contains(close_button)) this.hide();
         });
 
         let toggle = (params) => {
@@ -202,6 +222,13 @@ export default class Modal {
 
                         params.after_func(params.data);
 
+                        // show(), пришедший во время hiding, выполняется после полного закрытия.
+                        if (params.hide && this.#pending_show) {
+                            let pending = this.#pending_show;
+                            this.#pending_show = null;
+                            this.show(pending.data);
+                        }
+
                     }, this.#params.duration * 1000);
                 });
             });
@@ -209,10 +236,19 @@ export default class Modal {
         }
 
         this.show = (data = null) => {
+            if (this.#target == 'hidden' && this.#state != 'hidden' && !this.#params.allow_interrupt) {
+                this.#pending_show = { data };
+                return;
+            }
+
             if (
                 this.#state == 'hidden' ||
                 (this.#params.allow_interrupt && this.#state == 'hiding')
             ) {
+                Modal.#open = Modal.#open.filter(modal => modal !== this);
+                Modal.#open.push(this);
+                this.#target = 'shown';
+
                 toggle({
                     before_func: this.before_show,
                     after_func: this.on_show,
@@ -257,10 +293,15 @@ export default class Modal {
         };
 
         this.hide = (data = null) => {
+            this.#pending_show = null;
+
             if (
                 this.#state == 'shown' ||
                 (this.#params.allow_interrupt && this.#state == 'showing')
             ) {
+                Modal.#open = Modal.#open.filter(modal => modal !== this);
+                this.#target = 'hidden';
+
                 toggle({
                     before_func: this.before_hide,
                     after_func: this.on_hide,
@@ -286,9 +327,7 @@ export default class Modal {
         };
 
         if (this.#params.close_by_esc)
-            document.addEventListener('keydown', e => {
-                if ((e.code === 'Escape' || e.keyCode === 27)) this.hide(e);
-            });
+            Modal.#bind_esc();
 
         if (this.#params.trigger)
             document.querySelectorAll(this.#params.trigger).forEach(trigger => {

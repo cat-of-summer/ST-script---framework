@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <script src="https://cdn.jsdelivr.net/gh/cat-of-summer/js_classes/st_system/st_system.js"></script>
+    <script src="../dist/core.min.js"></script>
 
     <style>
         table {
@@ -94,9 +94,9 @@
         }
     }
 
-    let object_1_2 = st_system.merge(object_1, object_2);
-    let object_2_1 = st_system.merge(object_2, object_1);
-    let object_1_2_3 = st_system.merge(object_1, object_2, object_3);
+    let object_1_2 = Core.merge(object_1, object_2);
+    let object_2_1 = Core.merge(object_2, object_1);
+    let object_1_2_3 = Core.merge(object_1, object_2, object_3);
 
     document.querySelectorAll("pre[object='1']").forEach(element => {
         element.textContent = JSON.stringify(object_1, null, 2);

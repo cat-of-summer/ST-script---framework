@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Пример появляющегося временного рекламного окна</title>
-    <script src="../st_modal/st_modal.js"></script>
-    <script src="../st_cookie/st_cookie.js"></script>
+    <script src="../dist/modal.min.js"></script>
+    <script src="../dist/cookie.min.js"></script>
 
     <style>
         [state="hidden"], [state="hiding"] { opacity: 0 }
@@ -60,8 +60,8 @@
         overlay:         true,
     };
 
-    const modal = new st_modal(config);
-    st_cookie.callback(config.content, () => {
+    const modal = new Modal(config);
+    Cookie.callback(config.content, () => {
         modal.show();
     }, config);
 </script>

@@ -1,4 +1,4 @@
-# st_cookie.js
+# cookie
 
 ## Описание
 
@@ -6,27 +6,30 @@
 
 ## Публичные методы
 
-### `st_cookie.set(name, value, params?)`
+### `Cookie.set(name, value, params?)`
 
-Устанавливает cookie.
+Устанавливает cookie. Значения, которые не являются строкой (объекты, массивы, числа, `true`/`false`, `null`), записываются через `JSON.stringify`, поэтому `get` возвращает их в исходном виде. Строки записываются как есть, чтобы сервер мог читать их без разбора JSON.
+
+> [!warning] Строки, похожие на JSON
+> `get` пробует разобрать любое значение как JSON. Строка `'123'` прочитается числом `123`, строка `'true'` — значением `true`. Если важен именно строковый тип, приводите результат `get` сами.
 
 | Параметр | По умолчанию | Описание |
 |---|---|---|
-| `params.expires` | `3600` | Время жизни в секундах, строка даты или объект `Date` |
+| `params.expires` | `3600` | Время жизни в секундах, строка даты или объект `Date`. `Infinity` — «бессрочно»: 400 дней, это максимум, который сохраняет Chrome. |
 | `params.path` | `'/'` | Путь |
 | `params.domain` | — | Домен |
 | `params.secure` | — | Флаг `Secure` |
 | `params.sameSite` | — | `'Strict'` / `'Lax'` / `'None'` |
 
-### `st_cookie.get(name)`
+### `Cookie.get(name)`
 
 Возвращает значение cookie (автоматический `JSON.parse`) или `null`.
 
-### `st_cookie.delete(name, params?)`
+### `Cookie.delete(name, params?)`
 
 Удаляет cookie (устанавливает `expires: 0`).
 
-### `st_cookie.callback(name, callback, params?)`
+### `Cookie.callback(name, callback, params?)`
 
 Если cookie с именем `name` отсутствует — устанавливает её и вызывает `callback(name)` с задержкой `params.delay` секунд. При `params.interval > 0` проверяет повторно.
 
@@ -36,7 +39,7 @@
 | `params.delay` | `0` | Задержка вызова callback (сек) |
 | `params.value` | `true` | Значение устанавливаемой cookie |
 
-### `st_cookie.consent(params?)`
+### `Cookie.consent(params?)`
 
 Отображает баннер согласия с cookie. Показывается один раз — при отсутствии cookie `params.name`. Кнопки с атрибутом `action="accept"` / `action="decline"` управляют закрытием и записывают результат в cookie.
 
@@ -53,21 +56,24 @@
 
 ```js
 // Установка на 1 день
-st_cookie.set('user', { id: 42, name: 'Иван' }, { expires: 86400 });
+Cookie.set('user', { id: 42, name: 'Иван' }, { expires: 86400 });
+
+// «Бессрочно» (400 дней)
+Cookie.set('theme', 'dark', { expires: Infinity });
 
 // Чтение
-const user = st_cookie.get('user'); // { id: 42, name: 'Иван' }
+const user = Cookie.get('user'); // { id: 42, name: 'Иван' }
 
 // Удаление
-st_cookie.delete('user');
+Cookie.delete('user');
 
 // callback при первом посещении
-st_cookie.callback('welcome', () => {
+Cookie.callback('welcome', () => {
     showWelcomePopup();
 }, { delay: 2 });
 
 // Баннер согласия
-st_cookie.consent({
+Cookie.consent({
     location: 'bottom',
     name: 'gdpr_consent'
 });

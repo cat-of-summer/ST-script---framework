@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <script src="st_cookie.js"></script>
+    <script src="../dist/cookie.min.js"></script>
 </head>
 <body>
 
@@ -21,16 +21,16 @@
 
     <script>
         document.querySelector('button[action="set_cookie"]').addEventListener('click', () => {
-            st_cookie.set(event.target.closest('div').querySelector('input[name=cookie_name]').value, event.target.closest('div').querySelector('input[name=cookie_value]').value, {
+            Cookie.set(event.target.closest('div').querySelector('input[name=cookie_name]').value, event.target.closest('div').querySelector('input[name=cookie_value]').value, {
                 expires: 10 //секунд
             });
         });
         document.querySelector('button[action="get_cookie"]').addEventListener('click', (event) => {
-            alert(st_cookie.get(event.target.closest('div').querySelector('input[name=cookie_name]').value));
+            alert(Cookie.get(event.target.closest('div').querySelector('input[name=cookie_name]').value));
         });
 
-        st_cookie.callback('cookie_name', (cookie_name) => {
-            console.log(cookie_name+' = '+st_cookie.get(cookie_name));
+        Cookie.callback('cookie_name', (cookie_name) => {
+            console.log(cookie_name+' = '+Cookie.get(cookie_name));
         }, {
             interval: 0.5,
             delay: 3

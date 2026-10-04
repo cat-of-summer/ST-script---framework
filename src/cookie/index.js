@@ -7,6 +7,15 @@ export default class Cookie {
             ...params
         };
     
+        // «Бессрочно»: браузеры всё равно режут срок, Chrome — до 400 дней.
+        if (params.expires === Infinity)
+            params.expires = 400 * 24 * 3600;
+
+        // get() разбирает JSON, поэтому не-строки пишутся через JSON.stringify.
+        // Строки остаются как есть: их читает и сервер.
+        if (typeof value !== 'string')
+            value = JSON.stringify(value);
+
         if (!(params.expires instanceof Date)) {
             let expires = params.expires;
 

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Route — SPA (hash)</title>
+  <!-- hash-режим работает и по file://; history-режиму нужен сервер, отдающий этот документ на все пути -->
+  <script defer src="../dist/route.min.js"></script>
+  <script defer src="../dist/app.min.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; }
+    nav a { margin-right: 12px; }
+    pre { background: #f3f3f3; padding: 8px; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="#/">Главная</a>
+    <a href="#/coins/btc">BTC</a>
+    <a href="#/coins/eth?tab=chart">ETH, график</a>
+    <a href="#/nowhere">Нет такой</a>
+  </nav>
+
+  <st-app app="screens">
+    <section #if="screen === 'home'"><h1>Главная</h1></section>
+    <section #else-if="screen === 'coin'">
+      <h1>Монета {{ id }}</h1>
+      <p>Вкладка: {{ tab || 'обзор' }}</p>
+      <button @click="go('/')">На главную</button>
+    </section>
+    <section #else><h1>404</h1><p>{{ path }} не найден</p></section>
+  </st-app>
+
+  <pre id="log"></pre>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const log = msg => document.getElementById('log').textContent += msg + '\n';
+
+      const router = new Route({
+        mode: 'hash',
+        not_found: path => Object.assign(screens(), { screen: '404', path }),
+      });
+
+      App.create({
+        app: 'screens',
+        screen: 'home', id: '', tab: '', path: '',
+        go(url) { router.navigate(url); },
+      });
+
+      const screens = () => document.querySelector('st-app');
+
+      router.get('/', () => screens().screen = 'home');
+      router.get('/coins/{id}', id => Object.assign(screens(), { screen: 'coin', id, tab: router.query.tab ?? '' }));
+
+      document.addEventListener('route', e => log('переход: ' + e.detail.path));
+      document.addEventListener('route::404', e => log('404: ' + e.detail.path));
+    });
+  </script>
+</body>
+</html>
