@@ -362,15 +362,12 @@ await test('Modal: цвет затемнения через CSS-переменн
 const uploaderMarkup = `<form id="f"><div id="up"><button type="button" add-button>add</button>
     <div files-list></div></div></form>`;
 
-// crypto.randomUUID есть только в secure context, а тестовый origin — http.
-const uploaderInit = () => {
-    crypto.randomUUID ??= () => Math.random().toString(36).slice(2);
-    new Uploader({
-        target: '#up',
-        input_name: 'FILES',
-        entry: '<div file-item><span filename></span></div>',
-    });
-};
+// Тестовый origin — http, не secure context: заодно проверяет, что Uploader работает без crypto.randomUUID.
+const uploaderInit = () => new Uploader({
+    target: '#up',
+    input_name: 'FILES',
+    entry: '<div file-item><span filename></span></div>',
+});
 
 const pick = async (page, name) => {
     let [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('[add-button]')]);
@@ -416,6 +413,18 @@ await test('Cookie: симметричная сериализация', async ()
         return [Cookie.get('o'), Cookie.get('s'), Cookie.get('b'), Cookie.get('forever'), document.cookie.includes('s=plain')];
     });
     eq(result, [{ a: 1 }, 'plain', false, 1, true], 'объект, строка, boolean, expires: Infinity');
+    await page.close();
+});
+
+await test('Cookie.callback: записанный null не перезапускает колбэк', async () => {
+    let page = await open(``, ['cookie']);
+    let calls = await page.evaluate(async () => {
+        let calls = 0;
+        Cookie.callback('cb', () => calls++, { interval: 0.05, value: null });
+        await new Promise(r => setTimeout(r, 400));
+        return calls;
+    });
+    eq(calls, 1, 'колбэк один раз при interval и value: null');
     await page.close();
 });
 

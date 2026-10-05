@@ -65,8 +65,11 @@ export default class Cookie {
             ...params
         };
 
+        // Проверяется наличие, а не get() === null: значение null тоже валидно (consent пишет именно его).
+        let exists = () => document.cookie.split(';').some(c => c.trim().startsWith(encodeURIComponent(name) + '='));
+
         let interval = setInterval(() => {
-            if (Cookie.get(name) === null) {
+            if (!exists()) {
                 Cookie.set(name, params.value, params);
 
                 setTimeout(() => {
