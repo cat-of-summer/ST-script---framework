@@ -87,11 +87,12 @@ export default class Uploader {
 
             target.files = new Map();
             target.total_size = 0;
+            let last_id = 0;
 
             const createFileEntry = (file) => {
                 let entry = (new DOMParser()).parseFromString(entry_template, 'text/html').body.firstElementChild;
 
-                file._id = crypto.randomUUID();
+                file._id = ++last_id;
 
                 target.files.set(file._id, file);
                 target.total_size += file.size;
@@ -146,7 +147,7 @@ export default class Uploader {
                     let fileweight = entry.querySelector('*[fileweight]');
 
                     let file = {
-                        _id: crypto.randomUUID(),
+                        _id: ++last_id,
                         preview: preview?.src || '',
                         value: input.value,
                         name: filename?.textContent || '',
