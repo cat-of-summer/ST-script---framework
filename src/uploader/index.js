@@ -280,16 +280,17 @@ export default class Uploader {
                 });
             });
 
-            target.querySelectorAll('*[add-button]').forEach(b => b.addEventListener('click', () => {
-                let hidden = createFileInput();
+            let picker = createFileInput();
+            picker.removeAttribute('name');
 
-                hidden.addEventListener('change', () => {
-                    handleFiles(hidden.files);
-                });
+            picker.addEventListener('change', () => {
+                handleFiles(picker.files);
+                picker.value = '';
+            });
 
-                document.body.appendChild(hidden);
-                hidden.click();
-            }));
+            target.appendChild(picker);
+
+            target.querySelectorAll('*[add-button]').forEach(b => b.addEventListener('click', () => picker.click()));
 
             target.on_init(params);
         });

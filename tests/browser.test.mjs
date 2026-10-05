@@ -356,6 +356,53 @@ await test('Modal: цвет затемнения через CSS-переменн
 });
 
 // ---------------------------------------------------------------------------
+// Uploader
+// ---------------------------------------------------------------------------
+
+const uploaderMarkup = `<form id="f"><div id="up"><button type="button" add-button>add</button>
+    <div files-list></div></div></form>`;
+
+// crypto.randomUUID есть только в secure context, а тестовый origin — http.
+const uploaderInit = () => {
+    crypto.randomUUID ??= () => Math.random().toString(36).slice(2);
+    new Uploader({
+        target: '#up',
+        input_name: 'FILES',
+        entry: '<div file-item><span filename></span></div>',
+    });
+};
+
+const pick = async (page, name) => {
+    let [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('[add-button]')]);
+    await chooser.setFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(name) });
+    await tick(page);
+};
+
+await test('Uploader: кнопка не плодит input[type=file]', async () => {
+    let page = await open(uploaderMarkup, ['uploader']);
+    await page.evaluate(uploaderInit);
+    await pick(page, 'a.txt');
+    await pick(page, 'b.txt');
+    let state = await page.evaluate(() => ({
+        pickers: document.querySelectorAll('#up input[type=file]:not([name])').length,
+        outside: document.querySelectorAll('body > input[type=file]').length,
+        names: [...new FormData(document.querySelector('#f')).getAll('FILES[]')].map(f => f.name),
+    }));
+    eq(state, { pickers: 1, outside: 0, names: ['a.txt', 'b.txt'] }, 'один picker без name, файлы уходят по одному разу');
+    eq(page.errors, [], 'Uploader: без ошибок');
+    await page.close();
+});
+
+await test('Uploader: повторный выбор того же файла', async () => {
+    let page = await open(uploaderMarkup, ['uploader']);
+    await page.evaluate(uploaderInit);
+    await pick(page, 'same.txt');
+    await pick(page, 'same.txt');
+    eq(await page.$$eval('[file-item] [filename]', els => els.map(e => e.textContent)), ['same.txt', 'same.txt'], 'change срабатывает дважды');
+    await page.close();
+});
+
+// ---------------------------------------------------------------------------
 // Cookie
 // ---------------------------------------------------------------------------
 
