@@ -1,3 +1,5 @@
+import { closestInPath } from '../_traits/hasInstanceSymbol.js';
+
 export default class Route {
 
     #params = {};
@@ -94,7 +96,7 @@ export default class Route {
     #intercept(e) {
         if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 
-        let link = e.target.closest?.('a[href]');
+        let link = closestInPath(e, 'a[href]');
         if (!link || link.target && link.target !== '_self' || link.hasAttribute('download') || /\bexternal\b/.test(link.rel)) return;
 
         let raw = link.getAttribute('href');

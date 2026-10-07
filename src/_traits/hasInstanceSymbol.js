@@ -49,3 +49,13 @@ export const expose = (el, api) => {
 
     return el;
 };
+
+// Ближайший к цели элемент события, подходящий под селектор. Путь берётся из composedPath():
+// он зафиксирован при отправке, а e.target к всплытию может быть уже вынут из DOM перерисовкой
+// (App обновляет шаблон в микрозадаче между слушателями). root — граница поиска, включительно.
+export const closestInPath = (e, selector, root = null) => {
+    for (let node of e.composedPath()) {
+        if (node instanceof Element && node.matches(selector)) return node;
+        if (node === root) return undefined;
+    }
+};

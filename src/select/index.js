@@ -136,7 +136,7 @@ export default class Select {
 
         if (this.#params.close_on_outside)
             document.addEventListener('click', (e) => {
-                if (!container.contains(e.target)) this.close(container);
+                if (!e.composedPath().includes(container)) this.close(container);
             });
     }
 

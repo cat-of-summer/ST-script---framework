@@ -1,4 +1,4 @@
-import { element, find, own } from '../_traits/hasInstanceSymbol.js';
+import { closestInPath, element, find, own } from '../_traits/hasInstanceSymbol.js';
 
 export default class Modal {
     modal;
@@ -162,7 +162,8 @@ export default class Modal {
 
         if (this.#params.close_by_overlay)
             this.area.addEventListener('click', (e) => {
-                if (!this.container.contains(e.target)) this.hide(e);
+                // composedPath, а не e.target: перерисовка могла вынуть цель из контейнера до всплытия.
+                if (!e.composedPath().includes(this.container)) this.hide(e);
             });
 
         this.container = document.createElement('modal-container');
@@ -198,8 +199,7 @@ export default class Modal {
 
         // Делегирование: кнопки, появившиеся или пересозданные позже (App, innerHTML), тоже работают.
         this.content.addEventListener('click', e => {
-            let close_button = e.target.closest?.('[action="close"]');
-            if (close_button && this.content.contains(close_button)) this.hide();
+            if (closestInPath(e, '[action="close"]', this.content)) this.hide();
         });
 
         let toggle = (params) => {
