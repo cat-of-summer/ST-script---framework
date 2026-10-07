@@ -26,6 +26,11 @@ two flavours per module:
 | `route`               | `window.Route`      | URL reactions; SPA mode (`history` / `hash`).    |
 | `app/form`            | `window.Form`       | Form app **config object** — register with `App.create(form)`; `app` is not bundled. |
 
+Документация по каждому модулю — `docs/src/<module>/index.js.md`, например
+[`docs/src/app/index.js.md`](docs/src/app/index.js.md): директивы шаблона, `watch()` (в том
+числе `watch(() => выражение, cb)` для вычисляемого состояния), `nextTick()`, передача данных
+через `:attr`, вложенные компоненты и подводные камни.
+
 
 ## Development
 

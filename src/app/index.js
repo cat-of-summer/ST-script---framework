@@ -44,10 +44,14 @@ export default class App extends HTMLElement {
     #watchers = [];
     #triggeredKeys = new Set();
     #pendingFlush = false;
+    #tickWaiters = [];
+    // Тип значения из конфига: по нему приводится строка из атрибута :prop.
+    #types = new Map();
     #methodWrappers = new Map();
     #renderToken = 0;
     #appliedTemplate = '';
     #tornDown = false;
+    #templated = false;
 
     constructor() {
         super();
@@ -117,6 +121,7 @@ export default class App extends HTMLElement {
 
     applyTemplate(template = '') {
         let tplContent = template || this.#template;
+        this.#templated = true;
         this.#appliedTemplate = tplContent;
         this.#cleanupBindings(this.#bindings);
         this.#bindings = [];
@@ -125,7 +130,7 @@ export default class App extends HTMLElement {
             let tpl = document.createElement('template');
             tpl.innerHTML = tplContent.trim();
             let fragment = tpl.content.cloneNode(true);
-            Array.from(fragment.childNodes).forEach(child => this.#processNode(child));
+            this.#processChildren(fragment);
             this.#mount(fragment);
         }
         let token = ++this.#renderToken;
@@ -321,7 +326,11 @@ export default class App extends HTMLElement {
                 let oldVal = w.lastValue;
                 w.lastValue = w.deep && newVal !== null && typeof newVal === 'object'
                     ? JSON.parse(JSON.stringify(newVal)) : newVal;
-                w.callback(newVal, oldVal, w.unwatch);
+                try {
+                    w.callback(newVal, oldVal, w.unwatch);
+                } catch (e) {
+                    console.error('Watcher callback error:', e);
+                }
             }
 
             this.#triggeredKeys.clear();
@@ -330,9 +339,18 @@ export default class App extends HTMLElement {
                 this.#pendingFlush = false;
                 this.#flushing = true;
                 Promise.resolve().then(runFlush);
-            }
+            } else
+                this.#tickWaiters.splice(0).forEach(resolve => resolve());
         };
         Promise.resolve().then(runFlush);
+    }
+
+    // Промис, который разрешается после того, как DOM догнал данные: очередь эффектов
+    // и колбэков watch() пуста. Первую отрисовку вложенных <st-app> он не ждёт — для неё rendered.
+    nextTick() {
+        if (!this.#flushing)
+            return Promise.resolve();
+        return new Promise(resolve => this.#tickWaiters.push(resolve));
     }
 
     #getValueByPath(path) {
@@ -470,6 +488,7 @@ export default class App extends HTMLElement {
             get: (target, key) => {
                 if (key === Symbol.unscopables) return undefined;
                 let value = Reflect.get(target, key);
+                this.#warnNotReactive(key, value);
                 // Вызов f() внутри with передаёт this = scope; методам прототипа (нативным
                 // и с приватными полями) нужен сам элемент.
                 return typeof value === 'function' && !Object.hasOwn(target, key)
@@ -477,6 +496,19 @@ export default class App extends HTMLElement {
             },
             set: (target, key, value) => Reflect.set(target, key, value)
         });
+    }
+
+    #warnedKeys = new Set();
+
+    // Поля конфига — аксессоры на элементе. Обычное собственное свойство (this.loaded = …
+    // без объявления в конфиге) шаблон прочитает, но перерисовки по нему не будет.
+    #warnNotReactive(key, value) {
+        if (typeof key !== 'string' || typeof value === 'function' || this.#warnedKeys.has(key)) return;
+        if (this.#loopContext && key in this.#loopContext) return;
+        let descriptor = Object.getOwnPropertyDescriptor(this, key);
+        if (!descriptor || !('value' in descriptor)) return;
+        this.#warnedKeys.add(key);
+        console.warn(`<st-app app="${this.getAttribute('app') ?? ''}">: свойство "${key}" не объявлено в конфиге и не реактивно`);
     }
 
     #evalExpression(expr) {
@@ -532,10 +564,14 @@ export default class App extends HTMLElement {
     }
 
     #bindEvent(element, attr) {
-        let eventName = attr.name.slice(1);
+        // @input.self — только события самого элемента, без всплывших от потомков:
+        // так событие вложенного <st-app> не путается с нативным input из его полей.
+        let [eventName, ...modifiers] = attr.name.slice(1).split('.');
+        let self = modifiers.includes('self');
         let statement = attr.value;
         let capturedLoopCtx = this.#loopContext ? { ...this.#loopContext } : null;
         let handler = (e) => {
+            if (self && e.target !== element) return;
             if (capturedLoopCtx)
                 this.#withLoopVars(capturedLoopCtx, () => this.#execStatement(statement, e));
             else
@@ -836,10 +872,18 @@ export default class App extends HTMLElement {
             if (node.localName === 'st-app')
                 return;
             if (!elementRemoved && (node.parentNode || node.childNodes.length > 0))
-                Array.from(node.childNodes).forEach(child => this.#processNode(child));
+                this.#processChildren(node);
         }
         else if (node.nodeType === Node.TEXT_NODE && /\{\{.+?\}\}/.test(node.nodeValue))
             this.#processTextInterpolation(node);
+    }
+
+    // Обход по снимку, но без узлов, вынутых по ходу: #if забирает соседние #else-if/#else
+    // в свою цепочку, и привязки на их отсоединённых оригиналах вычислялись бы впустую.
+    #processChildren(parent) {
+        for (let child of Array.from(parent.childNodes))
+            if (child.parentNode === parent)
+                this.#processNode(child);
     }
 
     #boot() {
@@ -871,6 +915,8 @@ export default class App extends HTMLElement {
                     });
                 } else if (descriptor.value !== undefined) {
                     let value = descriptor.value;
+                    if (value !== null)
+                        this.#types.set(key, typeof value === 'object' ? 'json' : typeof value);
                     let internalValue = value;
                     if (typeof value === 'object' && value !== null)
                         internalValue = this.#createReactiveProxy(value, [key]);
@@ -937,29 +983,49 @@ export default class App extends HTMLElement {
         return String(value);
     }
 
-    #applySingleAttributeOption(name) {
-        if (!name.startsWith(':') || name === 'app') return;
-        let propName = name.replace(/^:+/,'');
-        let raw = this.getAttribute(name);
-        let descriptor = Object.getOwnPropertyDescriptor(this, propName);
-        let val = raw;
-        if (!raw) {
-            if (descriptor && (descriptor.get || descriptor.value !== undefined)) {
-                let existingVal = this[propName];
-                let serialized = this.#serializeForAttr(existingVal);
-                if (this.getAttribute(name) !== serialized)
-                    this.setAttribute(name, serialized);
-                val = existingVal;
-                descriptor = null;
+    // Строка атрибута → значение. type — модификатор (:value.json) или тип из конфига;
+    // без него — угадывание по виду строки, как для свойств, которых нет в конфиге.
+    #castAttr(raw, type) {
+        if (raw === '') return type && type !== 'string' ? null : '';
+        switch (type) {
+            case 'string': return raw;
+            case 'number': {
+                let number = Number(raw);
+                return Number.isNaN(number) ? raw : number;
             }
+            case 'boolean': return !['false', '0', 'null', 'undefined'].includes(raw);
+            case 'json': try { return JSON.parse(raw); } catch { return raw; }
         }
-        if (descriptor && descriptor.set === undefined && descriptor.writable === false) return;
-        if (descriptor && descriptor.get !== undefined && descriptor.set === undefined) return;
-        if (raw) {
-            if (raw === 'true') val = true;
-            else if (raw === 'false') val = false;
-            else if (/^-?\d+(\.\d+)?$/.test(raw)) val = Number(raw);
-            else { try { val = JSON.parse(raw); } catch { val = raw; } }
+        if (raw === 'true') return true;
+        if (raw === 'false') return false;
+        if (/^-?\d+(\.\d+)?$/.test(raw)) return Number(raw);
+        try { return JSON.parse(raw); } catch { return raw; }
+    }
+
+    // initial — первое применение при монтировании: только тогда пустой :prop означает
+    // «взять значение из конфига». Позже пустой атрибут — это пустое значение.
+    #applySingleAttributeOption(name, initial = false) {
+        if (!name.startsWith(':')) return;
+        // Имена атрибутов браузер приводит к нижнему регистру: :initial-count → initialCount.
+        let [propName, cast] = name.replace(/^:+/, '').split('.');
+        propName = propName.replace(/-([a-z])/g, (_, char) => char.toUpperCase());
+        let raw = this.getAttribute(name);
+        if (raw === null) return;
+        let descriptor = Object.getOwnPropertyDescriptor(this, propName);
+        let val;
+        if (raw === '' && initial && descriptor && (descriptor.get || descriptor.value !== undefined)) {
+            val = this[propName];
+            let serialized = this.#serializeForAttr(val);
+            if (raw !== serialized)
+                this.setAttribute(name, serialized);
+            descriptor = null;
+        } else {
+            if (descriptor && descriptor.set === undefined && descriptor.writable === false) return;
+            if (descriptor && descriptor.get !== undefined && descriptor.set === undefined) return;
+            // Атрибут уже совпадает со свойством: это обратная синхронизация, а не новое значение.
+            // Иначе null, отражённый в атрибут как '', вернулся бы в свойство строкой.
+            if (descriptor && this.#serializeForAttr(this[propName]) === raw) return;
+            val = this.#castAttr(raw, cast ?? this.#types.get(propName));
         }
         if (!descriptor || !descriptor.set) {
             let internalValue = val;
@@ -1025,6 +1091,13 @@ export default class App extends HTMLElement {
             }
             return;
         }
+        // Внутри <st-app>, который ещё не взял шаблон: родитель заберёт эту разметку как есть
+        // и пересоздаст узел. Отрисуйся он раньше — в шаблон родителя попал бы готовый снимок.
+        let host = this.parentElement?.closest('st-app');
+        if (host && !host.#templated) {
+            App.#instances.delete(this);
+            return;
+        }
         this.#boot();
         Promise.all([
             new Promise(resolve => {
@@ -1050,8 +1123,8 @@ export default class App extends HTMLElement {
         ]).then(() => {
             this.dispatchEvent('setup');
             for (let name of this.attrs.keys()) {
-                if (!name.startsWith(':') || name === 'app') continue;
-                this.#applySingleAttributeOption(name);
+                if (!name.startsWith(':')) continue;
+                this.#applySingleAttributeOption(name, true);
             }
             let appliedInline = false;
             if (this.childNodes.length > 0) {

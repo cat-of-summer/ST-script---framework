@@ -34,9 +34,13 @@ await context.route('**/*', route => {
     return route.fulfill({ body: html, contentType: 'text/html' });
 });
 
+// Ждёт условия, а не фиксированную паузу: анимации Modal идут через requestAnimationFrame,
+// и в контейнере кадр может прийти позже любых разумных 200 мс.
+const UNTIL = `<script>window.until = (fn, ms = 3000) => new Promise(r => { let end = Date.now() + ms; let t = () => fn() || Date.now() > end ? r() : setTimeout(t, 10); t(); });</script>`;
+
 // Открывает страницу с разметкой body и подключёнными модулями.
 async function open(body, modules = ['app'], url = '/') {
-    html = `<!doctype html><html><head><meta charset="utf-8">${modules.map(m => `<script src="/dist/${m}.min.js"></script>`).join('')}</head><body>${body}</body></html>`;
+    html = `<!doctype html><html><head><meta charset="utf-8">${UNTIL}${modules.map(m => `<script src="/dist/${m}.min.js"></script>`).join('')}</head><body>${body}</body></html>`;
     let page = await context.newPage();
     let errors = [];
     page.on('pageerror', e => errors.push(e.message));
@@ -290,6 +294,104 @@ await test('#html', async () => {
     await page.close();
 });
 
+const settle = page => page.waitForTimeout(150);
+
+await test('Вложенный App в inline-шаблоне родителя: копии из #for живые', async () => {
+    // Оба App зарегистрированы до разбора разметки: ребёнок мог бы отрисоваться раньше,
+    // чем родитель заберёт innerHTML в шаблон.
+    let page = await open(`<script>
+        App.create({ app: 'kid', on: false });
+        App.create({ app: 'host', items: ['a', 'b'] });
+    </script>
+    <st-app app="host"><div class="row" #for="x in items" #key="x"><st-app app="kid" :label="{{ x }}">
+        <button @click="on = !on"><span #if="on">ON</span><span #else>OFF</span></button><i>{{ label }}</i>
+    </st-app></div></st-app>`);
+    await settle(page);
+    let rows = () => page.$$eval('.row', rows => rows.map(r => r.querySelector('button').textContent + r.querySelector('i').textContent));
+    eq(await rows(), ['OFFa', 'OFFb'], 'вложенный: первая отрисовка');
+    await page.click('.row:first-child button');
+    await settle(page);
+    eq(await rows(), ['ONa', 'OFFb'], 'вложенный: клик меняет только свою копию');
+    await page.evaluate(() => document.querySelector('st-app[app=host]').items.push('c'));
+    await settle(page);
+    eq(await rows(), ['ONa', 'OFFb', 'OFFc'], 'вложенный: новая строка #for');
+    eq(page.errors, [], 'вложенный: без ошибок');
+    await page.close();
+});
+
+await test('#else-if/#else: неактивные ветки не вычисляются', async () => {
+    let page = await open(`<st-app app="e"><div class="r" #for="r in rows"><b #if="r.kind == 1">{{ r.a.x }}</b><b #else-if="r.kind == 2">{{ r.b.y }}</b><b #else>-</b></div></st-app>`);
+    await page.evaluate(() => App.create({ app: 'e', rows: [{ kind: 1, a: { x: 1 }, b: null }, { kind: 2, a: null, b: { y: 2 } }, { kind: 3 }] }));
+    await settle(page);
+    eq(await page.$$eval('.r', r => r.map(n => n.textContent)), ['1', '2', '-'], '#else-if: ветки');
+    eq(page.errors, [], '#else-if: без ошибок вычисления');
+    await page.close();
+});
+
+await test(':attr — тип из конфига, модификаторы, пустое значение', async () => {
+    let page = await open(`<st-app app="c" :pin="0123" :port="8080" :opts='{"a":1}' :flag="false" :list.json="[1,2]" :n.number="5" :initial-count="7" :s.string="true" :extra="x"></st-app>`);
+    let result = await page.evaluate(async () => {
+        App.create({ app: 'c', pin: '', port: 0, opts: {}, flag: true, template: '<p>{{ pin }}</p>' });
+        await new Promise(r => setTimeout(r, 100));
+        let el = document.querySelector('st-app');
+        let wait = () => new Promise(r => setTimeout(r, 30));
+        let types = [el.pin, el.port, el.opts.a, el.flag, el.list.length, el.n, el.s, el.initialCount];
+        el.setAttribute(':pin', ''); await wait();
+        let cleared = el.pin;
+        el.extra = null; await wait();
+        return { types, cleared, extra: el.extra, attr: el.getAttribute(':extra'), text: el.textContent };
+    });
+    eq(result.types, ['0123', 8080, 1, false, 2, 5, 'true', 7], ':attr: приведение');
+    eq(result.cleared, '', ':attr: сброс в пустую строку');
+    eq([result.extra, result.attr], [null, ''], ':attr: null не превращается в пустую строку');
+    eq(page.errors, [], ':attr: без ошибок');
+    await page.close();
+});
+
+await test('nextTick: DOM обновлён после await', async () => {
+    let page = await open(`<st-app app="n"><p>{{ count }}</p></st-app>`);
+    let text = await page.evaluate(async () => {
+        App.create({ app: 'n', count: 0 });
+        await new Promise(r => setTimeout(r, 100));
+        let el = document.querySelector('st-app');
+        el.count = 5;
+        let before = el.textContent.trim();
+        await el.nextTick();
+        return [before, el.textContent.trim()];
+    });
+    eq(text, ['0', '5'], 'nextTick');
+    await page.close();
+});
+
+await test('@event.self на <st-app>: только события самого компонента', async () => {
+    let page = await open(`<st-app app="outer"><p>{{ count }}</p><st-app app="inner" id="inner" @input.self="count++"><input id="field"></st-app></st-app>`);
+    let counts = await page.evaluate(async () => {
+        App.create({ app: 'inner', template: '' });
+        App.create({ app: 'outer', count: 0 });
+        let wait = () => new Promise(r => setTimeout(r, 100));
+        await wait();
+        let outer = document.querySelector('st-app[app=outer]');
+        document.querySelector('#field').dispatchEvent(new Event('input', { bubbles: true }));
+        let afterNative = outer.count;
+        document.querySelector('#inner').dispatchEvent('input');
+        return [afterNative, outer.count];
+    });
+    eq(counts, [0, 1], '.self: нативный input потомка не ловится');
+    await page.close();
+});
+
+await test('Предупреждение о свойстве вне конфига — один раз', async () => {
+    let page = await open(`<st-app app="w"><p>{{ loaded }} {{ n }}</p></st-app>`);
+    await page.evaluate(async () => {
+        App.create({ app: 'w', n: 0, setup() { this.loaded = 1; } });
+        await new Promise(r => setTimeout(r, 100));
+        document.querySelector('st-app').n++;
+    });
+    await settle(page);
+    eq(page.errors.filter(e => e.includes('"loaded"')).length, 1, 'предупреждение один раз');
+    await page.close();
+});
+
 // ---------------------------------------------------------------------------
 // Modal
 // ---------------------------------------------------------------------------
@@ -300,13 +402,13 @@ await test('Modal: Esc закрывает только верхнее окно',
         let wait = () => new Promise(r => setTimeout(r, 200));
         let a = new Modal({ content: '<div>a</div>' });
         let b = new Modal({ content: '<div>b</div>' });
-        a.show(); await wait();
-        b.show(); await wait();
+        a.show(); await until(() => a.state === 'shown');
+        b.show(); await until(() => b.state === 'shown');
         document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' }));
-        await wait();
+        await until(() => b.state === 'hidden'); await wait();
         let first = [a.state, b.state];
         document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' }));
-        await wait();
+        await until(() => a.state === 'hidden');
         return [...first, a.state];
     });
     eq(states, ['shown', 'hidden', 'hidden'], 'Esc: сначала верхнее, затем нижнее');
@@ -319,9 +421,9 @@ await test('Modal: [action="close"], появившийся после созд�
         let wait = () => new Promise(r => setTimeout(r, 200));
         let m = new Modal({ content: '<div></div>' });
         m.content.innerHTML = '<button action="close"><span id="in">x</span></button>';
-        m.show(); await wait();
+        m.show(); await until(() => m.state === 'shown');
         document.querySelector('#in').click();
-        await wait();
+        await until(() => m.state === 'hidden');
         return m.state;
     });
     eq(state, 'hidden', 'делегированное закрытие');
@@ -334,10 +436,10 @@ await test('Modal: show() сразу после hide() не теряется', a
         let wait = ms => new Promise(r => setTimeout(r, ms));
         let shows = [];
         let m = new Modal({ content: '<div></div>', duration: 0.1, on_show: d => shows.push(d) });
-        m.show(1); await wait(200);
+        m.show(1); await until(() => m.state === 'shown');
         m.hide();
         m.show(2);
-        await wait(400);
+        await until(() => shows.length === 2 && m.state === 'shown');
         return [m.state, shows];
     });
     eq(result, ['shown', [1, 2]], 'повторный show выполняется после закрытия');
@@ -352,6 +454,26 @@ await test('Modal: цвет затемнения через CSS-переменн
         return getComputedStyle(m.overlay).backgroundColor;
     });
     eq(color, 'rgb(1, 2, 3)', '--modal-overlay-color');
+    await page.close();
+});
+
+await test('Modal: перерисовка App под курсором не закрывает окно', async () => {
+    let page = await open(`<div id="box"><st-app app="m">
+        <button id="swap" @click="on = !on"><span #if="on" class="i">A</span><span #else class="i">B</span></button>
+        <button id="close" action="close" @click="on = !on"><span #if="on" class="c">A</span><span #else class="c">B</span></button>
+    </st-app></div>`, ['app', 'modal']);
+    let result = await page.evaluate(async () => {
+        let wait = () => new Promise(r => setTimeout(r, 200));
+        App.create({ app: 'm', on: false });
+        await wait();
+        let m = new Modal({ content: '#box' });
+        m.show(); await until(() => m.state === 'shown');
+        document.querySelector('#swap .i').click(); await wait();
+        let afterSwap = [m.state, document.querySelector('#swap').textContent];
+        document.querySelector('#close .c').click(); await until(() => m.state === 'hidden');
+        return [...afterSwap, m.state];
+    });
+    eq(result, ['shown', 'A', 'hidden'], 'клик снаружи по composedPath');
     await page.close();
 });
 
