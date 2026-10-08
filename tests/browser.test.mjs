@@ -392,6 +392,42 @@ await test('Предупреждение о свойстве вне конфиг
     await page.close();
 });
 
+// Ввод с клавиатуры, а не dispatchEvent: только у пользовательского события браузер
+// выполняет микрозадачи между слушателями, и #if успевает убрать поле посреди рассылки.
+await test('#if убирает поле при вводе - обработчики того же события срабатывают', async () => {
+    let page = await open(`<st-app app="t"><div>
+        <textarea #if="text === ''" id="ta" #model="text" @input="typed++"></textarea>
+        <div #if="note === ''" @input="wrapped++"><input id="in" #model="note"></div>
+        <p id="n">{{ typed }}:{{ wrapped }}</p></div></st-app>`);
+    await page.evaluate(() => App.create({ app: 't', text: '', note: '', typed: 0, wrapped: 0 }));
+    await tick(page);
+    await page.focus('#ta');
+    await page.keyboard.type('x');
+    await page.focus('#in');
+    await page.keyboard.type('y');
+    await tick(page);
+    eq(await page.textContent('#n'), '1:1', '@input на поле и на обёртке ветки вызваны');
+    await page.close();
+});
+
+await test('checked, selected и value следуют за состоянием после действий пользователя', async () => {
+    let page = await open(`<st-app app="t"><div>
+        <input type="checkbox" id="cb" checked="{{ on }}"><button id="flip" @click="on = !on">f</button>
+        <select id="s"><option value="a">a</option><option value="b" selected="{{ pick === 'b' }}">b</option></select>
+        <input id="v" value="{{ name }}"></div></st-app>`);
+    await page.evaluate(() => App.create({ app: 't', on: true, pick: '', name: 'a' }));
+    await tick(page);
+    await page.click('#cb');
+    await page.click('#flip'); await tick(page);
+    await page.click('#flip'); await tick(page);
+    await page.selectOption('#s', 'a');
+    await page.fill('#v', 'zzz');
+    await page.evaluate(() => Object.assign(document.querySelector('st-app'), { pick: 'b', name: 'q' }));
+    await tick(page);
+    eq(await page.evaluate(() => [cb.checked, s.value, v.value]), [true, 'b', 'q'], 'свойства, а не только атрибуты');
+    await page.close();
+});
+
 // ---------------------------------------------------------------------------
 // Modal
 // ---------------------------------------------------------------------------

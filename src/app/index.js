@@ -1,5 +1,8 @@
 export default class App extends HTMLElement {
     static #boolean_attributes = new Set(['disabled', 'checked', 'readonly', 'required', 'selected', 'hidden', 'open', 'autofocus']);
+    // Атрибут у них - только начальное значение: после действий пользователя браузер
+    // смотрит на свойство, поэтому привязка выставляет и его.
+    static #live_properties = new Set(['checked', 'selected', 'value']);
     static #apps = new Map();
     static #instances = new Set();
     static #selectSync = new WeakMap();
@@ -61,11 +64,14 @@ export default class App extends HTMLElement {
     #cleanupBindings(bindings) {
         if (!bindings || !bindings.length) return;
         bindings.forEach(binding => {
+            // Слушатели снимаются в следующей задаче. Между слушателями пользовательского
+            // события браузер выполняет микрозадачи: #model меняет данные, #if убирает ветку,
+            // и снятый сразу @input того же события уже не был бы вызван.
             if (binding.type === 'event' && binding.element && binding.handler)
-                binding.element.removeEventListener(binding.eventName, binding.handler);
+                setTimeout(() => binding.element.removeEventListener(binding.eventName, binding.handler));
             else if (binding.type === 'model' && binding.element && binding.handler) {
                 let eventName = binding.element.tagName === 'SELECT' ? 'change' : 'input';
-                binding.element.removeEventListener(eventName, binding.handler);
+                setTimeout(() => binding.element.removeEventListener(eventName, binding.handler));
             } else if (binding.type === 'attrSync' && binding.unwatch)
                 binding.unwatch();
             binding.dispose?.();
@@ -812,14 +818,22 @@ export default class App extends HTMLElement {
                 parts[index] = value == null ? '' : String(value);
             });
             let finalValue = parts.join('');
+            let live = App.#live_properties.has(attrName) && attrName in element
+                && (attrName !== 'value' || element.tagName === 'INPUT');
             if (App.#boolean_attributes.has(attrName)) {
                 let falsy = finalValue === '' || finalValue === 'false' || finalValue === '0' || finalValue === 'null' || finalValue === 'undefined' || !finalValue;
                 if (falsy)
                     element.removeAttribute(attrName);
                 else
                     element.setAttribute(attrName, '');
-            } else
+                if (live)
+                    element[attrName] = !falsy;
+            } else {
                 element.setAttribute(attrName, finalValue);
+                // Сравнение - чтобы не сбрасывать курсор в поле при каждом проходе эффекта.
+                if (live && element.value !== finalValue)
+                    element.value = finalValue;
+            }
         });
         this.#bindings.push({ type: 'attribute', element, attrName, effect });
     }
