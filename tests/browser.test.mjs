@@ -1,4 +1,4 @@
-// Браузерные автотесты App, Modal, Uploader, Core, Theme, Cookie и Route: node tests/browser.test.mjs
+// Браузерные автотесты App, Modal, Uploader, Core, Cookie и Route: node tests/browser.test.mjs
 // Нужен Playwright с Chromium: стоит не в репозитории — путь к нему в PLAYWRIGHT_FROM (README, раздел Tests).
 // Модули грузятся из dist/ (IIFE-сборки), поэтому перед прогоном нужен npm run build.
 // Страницы отдаются через page.route с фиктивного origin: History API и cookie работают.
@@ -784,37 +784,6 @@ await test('Core.copy без Clipboard API и Core.download', async () => {
         return [ok, copied, document.activeElement.id, clicks, document.querySelectorAll('textarea, a').length];
     });
     eq(result, [true, 'секрет', 'keep', [['key.txt', 'blob:']], 0], 'копирование, возврат фокуса, ссылка на blob убрана');
-    await page.close();
-});
-
-// ---------------------------------------------------------------------------
-// Theme
-// ---------------------------------------------------------------------------
-
-await test('Theme: выбор в куке, data-theme, событие, сброс', async () => {
-    let page = await open(``, ['theme']);
-    await page.emulateMedia({ colorScheme: 'dark' });
-    let result = await page.evaluate(() => {
-        let events = [];
-        document.addEventListener('theme:change', e => events.push(`${e.detail.theme}/${e.detail.chosen}`));
-        let initial = [Theme.get(), Theme.chosen()];
-        let toggled = Theme.toggle();
-        let state = [document.documentElement.dataset.theme, document.cookie.includes('theme=light')];
-        Theme.set(null);
-        return [initial, toggled, state, Theme.get(), document.documentElement.hasAttribute('data-theme'), events];
-    });
-    eq(result, [['dark', null], 'light', ['light', true], 'dark', false, ['light/light', 'dark/null']], 'системная, выбор и сброс');
-    let inline = await page.evaluate(() => {
-        document.cookie = 'theme=dark; path=/';
-        document.documentElement.removeAttribute('data-theme');
-        new Function(Theme.script())();
-        let picked = document.documentElement.dataset.theme;
-        document.cookie = 'theme=evil; path=/';
-        document.documentElement.removeAttribute('data-theme');
-        new Function(Theme.script())();
-        return [picked, document.documentElement.hasAttribute('data-theme')];
-    });
-    eq(inline, ['dark', false], 'Theme.script(): только известные темы');
     await page.close();
 });
 

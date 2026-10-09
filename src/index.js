@@ -10,7 +10,6 @@ export { default as Observer } from './observer/index.js';
 export { default as Select } from './select/index.js';
 export { default as Route } from './route/index.js';
 export { default as Core } from './core/index.js';
-export { default as Theme } from './theme/index.js';
 export { default as Toggle } from './toggle/index.js';
 export { default as Typograf } from './typograf/index.js';
 export { default as Uploader } from './uploader/index.js';
