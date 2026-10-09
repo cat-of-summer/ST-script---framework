@@ -50,6 +50,57 @@ export default class Core {
         return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
     }
 
+    // Русское склонение по числу: plural(3, 'файл', 'файла', 'файлов') → 'файла'.
+    static plural(n, one, few, many) {
+        let abs = Math.abs(n), mod10 = abs % 10, mod100 = abs % 100;
+
+        if (mod10 === 1 && mod100 !== 11) return one;
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+        return many;
+    }
+
+    // Экранирование для вставки строки в HTML (#html, innerHTML).
+    static escape(text) {
+        return String(text ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+    }
+
+    // Текст в буфер обмена. Promise<boolean>. Вне защищённого контекста (http не на
+    // localhost) Clipboard API нет — копирование через скрытое поле и execCommand.
+    static async copy(text) {
+        text = String(text ?? '');
+
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch {
+            let area = Object.assign(document.createElement('textarea'), { value: text, readOnly: true });
+            Object.assign(area.style, { position: 'fixed', top: '0', left: '0', opacity: '0' });
+
+            let active = document.activeElement;
+            document.body.append(area);
+            area.select();
+
+            let ok = false;
+            try { ok = document.execCommand('copy'); } catch {}
+
+            area.remove();
+            active?.focus?.({ preventScroll: true });
+            return ok;
+        }
+    }
+
+    // Отдать строку или Blob файлом: download('текст', 'key.txt').
+    static download(content, filename, type = 'text/plain') {
+        let blob = content instanceof Blob ? content : new Blob([content], { type });
+        let url = URL.createObjectURL(blob);
+        let link = Object.assign(document.createElement('a'), { href: url, download: filename, hidden: true });
+
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url));
+    }
+
     static fetch(params) {
         if (params instanceof HTMLFormElement)
             params = {

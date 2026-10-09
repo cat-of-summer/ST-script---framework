@@ -3,6 +3,13 @@ import { find, own } from '../_traits/hasInstanceSymbol.js';
 export default class Uploader {
     static find = find;
 
+    #targets = [];
+
+    // Убрать все файлы из всех загрузчиков этого экземпляра.
+    clear() {
+        this.#targets.forEach(target => target.clear());
+    }
+
     static formatSize(size) {
         const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
 
@@ -44,16 +51,30 @@ export default class Uploader {
             },
         };
 
+        if (!params.input_name)
+            throw new Error('Uploader: не задан input_name');
+
         let input_name = params.input_name.replace(/\[\]$/, '');
 
         params.input_name = input_name + (params.limits.files != 1 ? '[]' : '');
         params.delete_name = (params.delete_name ? params.delete_name.replace(/\[\]$/, '')  : input_name + '_to_delete') + (params.limits.files != 1 ? '[]' : '');
 
-        document.querySelectorAll(params.target).forEach(target => {
+        // target — селектор, элемент или список элементов.
+        let targets = typeof params.target == 'string'
+            ? document.querySelectorAll(params.target)
+            : params.target instanceof Element ? [params.target] : Array.from(params.target ?? []);
+
+        targets.forEach(target => {
             if (find(target))
                 throw new Error("Already inited");
 
             own(target, this);
+            this.#targets.push(target);
+
+            // События на корне загрузчика, всплывают: uploader:add, uploader:delete, uploader:error.
+            const emit = (name, detail, cancelable = false) => target.dispatchEvent(
+                new CustomEvent(`uploader:${name}`, { bubbles: true, cancelable, detail })
+            );
 
             for (let [key, value] of Object.entries(params))
                 if (typeof value == "function")
@@ -61,15 +82,15 @@ export default class Uploader {
 
             target.before_init(params);
 
+            // Ошибку получает handle_exception; без него — слушатели uploader:error, а если
+            // никто не вызвал preventDefault() — alert.
             const handleException = (file, message, code = null) => {
+                let error = Object.assign(new Error(message), { file, code });
+                let unhandled = emit('error', { error }, true);
+
                 if (params.handle_exception)
-                    return target.handle_exception(Object.assign(
-                        new Error(message),{
-                            file,
-                            code
-                        }
-                    ));
-                else
+                    return target.handle_exception(error);
+                else if (unhandled)
                     alert(message);
 
                 return false;
@@ -88,6 +109,10 @@ export default class Uploader {
             target.files = new Map();
             target.total_size = 0;
             let last_id = 0;
+            // Удаление каждой записи по id файла: им пользуется clear().
+            let removers = new Map();
+
+            target.clear = () => [...removers.values()].forEach(remove => remove());
 
             const createFileEntry = (file) => {
                 let entry = (new DOMParser()).parseFromString(entry_template, 'text/html').body.firstElementChild;
@@ -116,14 +141,20 @@ export default class Uploader {
                     f.setAttribute('size', file.size);
                 });
 
-                delete_button.forEach(b => b.addEventListener('click', () => {
-                    if (target.before_file_delete(file) === false) return;
-
+                const remove = () => {
                     target.total_size = Math.max(0, target.total_size - parseInt(file.size));
                     target.files.delete(file._id);
+                    removers.delete(file._id);
                     entry.remove();
 
-                    target.on_file_delete(file)
+                    target.on_file_delete(file);
+                    emit('delete', { file });
+                };
+                removers.set(file._id, remove);
+
+                delete_button.forEach(b => b.addEventListener('click', () => {
+                    if (target.before_file_delete(file) === false) return;
+                    remove();
                 }));
 
                 let hidden = createFileInput();
@@ -156,9 +187,7 @@ export default class Uploader {
 
                     target.files.set(file._id, file);
 
-                    delete_button.forEach(b => b.addEventListener('click', () => {
-                        if (target.before_file_delete(file) === false) return;
-
+                    const remove = () => {
                         let hidden = Object.assign(document.createElement('input'), {
                             type: 'hidden',
                             name: params.delete_name,
@@ -168,9 +197,17 @@ export default class Uploader {
                         target.appendChild(hidden);
 
                         target.files.delete(file._id);
+                        removers.delete(file._id);
                         target.on_file_delete(file);
+                        emit('delete', { file });
 
                         entry.remove();
+                    };
+                    removers.set(file._id, remove);
+
+                    delete_button.forEach(b => b.addEventListener('click', () => {
+                        if (target.before_file_delete(file) === false) return;
+                        remove();
                     }));
 
                     input.remove();
@@ -238,6 +275,8 @@ export default class Uploader {
                 }
 
                 target.on_files_add(file_array);
+                if (file_array.length > 0)
+                    emit('add', { files: file_array });
             };
 
             try {
@@ -254,6 +293,10 @@ export default class Uploader {
             } catch (e) {
                 entry_template = params.entry;
             }
+            // Записей нет, а entry — селектор: шаблон берётся из <template entry> внутри.
+            entry_template ??= target.querySelector('template[entry]')?.innerHTML;
+            if (entry_template == null)
+                throw new Error('Uploader: нет шаблона записи — ни существующих записей, ни <template entry>, ни HTML в entry');
             entry_template = entry_template.trim();
 
             target.querySelectorAll('*[drop-zone]').forEach(zone => {

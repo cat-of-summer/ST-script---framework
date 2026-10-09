@@ -122,5 +122,14 @@ r = await run({ network: true });
 eq(r.failed, { status: 0, response: '' }, 'сеть → status 0, пустое тело');
 eq(r.settled, 'reject', 'сеть → reject');
 
+// ---------------------------------------------------------------------------
+// plural, escape
+// ---------------------------------------------------------------------------
+
+eq([0, 1, 2, 5, 11, 21, 22, 112, 1001, -3].map(n => Core.plural(n, 'файл', 'файла', 'файлов')),
+    ['файлов', 'файл', 'файла', 'файлов', 'файлов', 'файл', 'файла', 'файлов', 'файл', 'файла'], 'plural: русские формы');
+eq(Core.escape(`<a href="x">'&'</a>`), '&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;', 'escape: все пять символов');
+eq(Core.escape(null), '', 'escape: null → пустая строка');
+
 console.log(`core: ${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

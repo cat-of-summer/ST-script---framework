@@ -12,7 +12,7 @@ two flavours per module:
 | `modal`               | `window.Modal`      | Modal windows.                                   |
 | `typograf`            | `window.Typograf`   | Неразрывные пробелы: предлоги, частицы, числа, последнее слово. |
 | `cookie`              | `window.Cookie`     | Cookie helpers (JSON for non-strings).           |
-| `core`                | `window.Core`       | Utilities (`merge`, `getRandomChars`, `uuid`, `fetch`). |
+| `core`                | `window.Core`       | Utilities (`merge`, `getRandomChars`, `uuid`, `plural`, `escape`, `copy`, `download`, `fetch`). |
 | `observer`            | `window.Observer`   | Scroll animations: `[state]`, `--progress`, stagger, cross. |
 | `toggle`              | `window.Toggle`     | State toggler (accordions, switches, hover-menus).|
 | `select`              | `window.Select`     | Custom `<select>` dropdown (hooks, multiple, hover).|
@@ -125,7 +125,7 @@ git push origin v1.1.0
 ```bash
 node tests/core.test.mjs      # и остальные tests/*.test.mjs без DOM
 npm run build                 # браузерным тестам нужен dist/
-node tests/browser.test.mjs   # App, Modal, Cookie, Route — нужен Playwright с Chromium
+node tests/browser.test.mjs   # App, Modal, Uploader, Core, Cookie, Route — нужен Playwright с Chromium
 ```
 
 Браузерные тесты удобно гонять в контейнере с Playwright, не ставя его на машину:

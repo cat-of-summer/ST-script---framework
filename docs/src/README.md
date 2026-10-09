@@ -16,6 +16,7 @@
 - [st_button_widget](st_button_widget/)
 - [st_links_widget](st_links_widget/)
 - [st_widget](st_widget/)
+- [theme](theme/)
 - [toggle](toggle/)
 - [typograf](typograf/)
 - [uploader](uploader/)

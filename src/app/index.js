@@ -1,11 +1,49 @@
 export default class App extends HTMLElement {
     static #boolean_attributes = new Set(['disabled', 'checked', 'readonly', 'required', 'selected', 'hidden', 'open', 'autofocus']);
-    // Атрибут у них - только начальное значение: после действий пользователя браузер
+    // Атрибут у них — только начальное значение: после действий пользователя браузер
     // смотрит на свойство, поэтому привязка выставляет и его.
     static #live_properties = new Set(['checked', 'selected', 'value']);
     static #apps = new Map();
     static #instances = new Set();
     static #selectSync = new WeakMap();
+    // Классы, которые поставил #class: привязка class="{{ }}" переписывает атрибут целиком
+    // и возвращает их следом.
+    static #classSets = new WeakMap();
+    // Помощники шаблонов на все приложения: App.helpers({ … }).
+    static #globalHelpers = {};
+
+    // Значения, которые видны в шаблонах всех приложений, но не реактивны: форматтеры,
+    // фасады модулей. Методы не оборачиваются, их вызов ничего не перерисовывает.
+    static helpers(helpers = {}) {
+        Object.assign(App.#globalHelpers, helpers);
+        return App.#globalHelpers;
+    }
+
+    // Исходный объект под реактивной обёрткой. Вложенные значения не трогает.
+    static toRaw(value) {
+        return App.#raw(value);
+    }
+
+    // Глубокая копия данных без реактивных обёрток: массивы и простые объекты копируются,
+    // остальное (Date, File, Map…) идёт как есть.
+    static snapshot(value, seen = new WeakMap()) {
+        value = App.#raw(value);
+        if (value === null || typeof value !== 'object') return value;
+        if (seen.has(value)) return seen.get(value);
+        let proto = Object.getPrototypeOf(value);
+        if (Array.isArray(value)) {
+            let copy = [];
+            seen.set(value, copy);
+            value.forEach(item => copy.push(App.snapshot(item, seen)));
+            return copy;
+        }
+        if (proto !== Object.prototype && proto !== null) return value;
+        let copy = {};
+        seen.set(value, copy);
+        for (let key of Object.keys(value))
+            copy[key] = App.snapshot(value[key], seen);
+        return copy;
+    }
 
     static create(options) {
         let { app, setup = () => {}, template = ``, events = {} } = options;
@@ -30,6 +68,8 @@ export default class App extends HTMLElement {
         });
         if (baseConfig.events || options.events)
             merged.events = { ...baseConfig.events, ...options.events };
+        if (baseConfig.helpers || options.helpers)
+            merged.helpers = { ...baseConfig.helpers, ...options.helpers };
         return App.create(merged);
     }
 
@@ -55,6 +95,11 @@ export default class App extends HTMLElement {
     #appliedTemplate = '';
     #tornDown = false;
     #templated = false;
+    // helpers из конфига приложения.
+    #helpers = {};
+    // Эффекты по контексту строки #for (и всем его предкам): перенесённая строка
+    // перезапускает их с новыми переменными цикла, а не пересоздаётся.
+    #ctxEffects = new WeakMap();
 
     constructor() {
         super();
@@ -77,14 +122,33 @@ export default class App extends HTMLElement {
             binding.dispose?.();
 
             if (binding.effect) {
-                this.#deps.forEach((effects, key) => {
-                    effects.delete(binding.effect);
-                    if (effects.size === 0)
-                        this.#deps.delete(key);
-                });
+                this.#untrack(binding.effect);
                 this.#updateQueue.delete(binding.effect);
+                this.#unregisterEffect(binding.effect);
             }
         });
+    }
+
+    #untrack(effect) {
+        this.#deps.forEach((effects, key) => {
+            effects.delete(effect);
+            if (effects.size === 0)
+                this.#deps.delete(key);
+        });
+    }
+
+    #registerEffect(effect, ctx) {
+        for (let c = ctx; c; c = Object.getPrototypeOf(c)) {
+            let set = this.#ctxEffects.get(c);
+            if (!set)
+                this.#ctxEffects.set(c, set = new Set());
+            set.add(effect);
+        }
+    }
+
+    #unregisterEffect(effect) {
+        for (let c = effect.ctx; c; c = Object.getPrototypeOf(c))
+            this.#ctxEffects.get(c)?.delete(effect);
     }
 
     get template() {
@@ -452,7 +516,9 @@ export default class App extends HTMLElement {
     }
 
     #effect(fn) {
-        let capturedLoopCtx = this.#loopContext ? { ...this.#loopContext } : null;
+        // Контекст цикла — по ссылке: перенесённая строка #for меняет в нём переменные,
+        // и перезапуск эффекта видит новые.
+        let capturedLoopCtx = this.#loopContext;
         let wrappedEffect = () => {
             // Стек, а не обнуление: вложенный эффект (#for внутри ветки #if) не должен
             // сбрасывать отслеживание внешнего.
@@ -469,6 +535,10 @@ export default class App extends HTMLElement {
                 this.#activeEffect = prevEffect;
             }
         };
+        if (capturedLoopCtx) {
+            wrappedEffect.ctx = capturedLoopCtx;
+            this.#registerEffect(wrappedEffect, capturedLoopCtx);
+        }
         wrappedEffect();
         return wrappedEffect;
     }
@@ -489,10 +559,17 @@ export default class App extends HTMLElement {
     #scopeProxy = null;
 
     get #scope() {
+        // Порядок поиска имени: свойства компонента и переменные цикла, helpers конфига,
+        // App.helpers, глобальные (window).
         return this.#scopeProxy ??= new Proxy(this, {
-            has: (target, key) => typeof key === 'string' && key in target,
+            has: (target, key) => typeof key === 'string'
+                && (key in target || key in this.#helpers || key in App.#globalHelpers),
             get: (target, key) => {
                 if (key === Symbol.unscopables) return undefined;
+                if (typeof key === 'string' && !(key in target)) {
+                    if (key in this.#helpers) return this.#helpers[key];
+                    if (key in App.#globalHelpers) return App.#globalHelpers[key];
+                }
                 let value = Reflect.get(target, key);
                 this.#warnNotReactive(key, value);
                 // Вызов f() внутри with передаёт this = scope; методам прототипа (нативным
@@ -575,7 +652,7 @@ export default class App extends HTMLElement {
         let [eventName, ...modifiers] = attr.name.slice(1).split('.');
         let self = modifiers.includes('self');
         let statement = attr.value;
-        let capturedLoopCtx = this.#loopContext ? { ...this.#loopContext } : null;
+        let capturedLoopCtx = this.#loopContext;
         let handler = (e) => {
             if (self && e.target !== element) return;
             if (capturedLoopCtx)
@@ -609,6 +686,30 @@ export default class App extends HTMLElement {
         this.#bindings.push({ type: 'show', element, effect });
     }
 
+    // #class="{ 'a b': cond }", массив или строка имён: классы ставятся поверх статического
+    // class и снимаются, когда условие ложно. Имена лежат литералами в разметке — их видит purge.
+    #bindClass(element, attr) {
+        let expr = attr.value;
+        let active = new Set();
+        App.#classSets.set(element, active);
+        let effect = this.#effect(() => {
+            let value = this.#evalExpression(expr);
+            let next = new Set();
+            let add = names => String(names).split(/\s+/).filter(Boolean).forEach(name => next.add(name));
+            if (Array.isArray(value))
+                value.forEach(names => names && add(names));
+            else if (value && typeof value === 'object')
+                Object.entries(value).forEach(([names, on]) => on && add(names));
+            else if (value)
+                add(value);
+            active.forEach(name => next.has(name) || element.classList.remove(name));
+            next.forEach(name => element.classList.add(name));
+            active.clear();
+            next.forEach(name => active.add(name));
+        });
+        this.#bindings.push({ type: 'class', element, effect });
+    }
+
     #bindModel(element, attr) {
         let prop = attr.value;
         let effect = this.#effect(() => {
@@ -626,14 +727,15 @@ export default class App extends HTMLElement {
             } else
                 element.value = value == null ? '' : value;
         });
-        let capturedLoopCtx = this.#loopContext ? { ...this.#loopContext } : null;
+        let capturedLoopCtx = this.#loopContext;
         let eventName = element.tagName === 'SELECT' ? 'change' : 'input';
         let handler = (e) => {
             let newValue;
             if (element.type === 'checkbox')
                 newValue = element.checked;
+            // Пустое числовое поле — null, а не NaN из valueAsNumber.
             else if (element.type === 'number' || element.type === 'range')
-                newValue = element.valueAsNumber;
+                newValue = element.value === '' ? null : element.valueAsNumber;
             else
                 newValue = element.value;
             if (capturedLoopCtx)
@@ -700,15 +802,22 @@ export default class App extends HTMLElement {
         return this.#bindings.splice(before);
     }
 
+    // Контекст строки #for: переменные строки поверх контекста внешнего цикла (прототипом),
+    // так вложенная строка видит и свои, и внешние, а перенос внешней строки виден всем.
+    #loopScope(vars) {
+        return Object.assign(Object.create(this.#loopContext ?? null), vars);
+    }
+
     // Временно кладёт переменные цикла на компонент, чтобы их видели выражения.
-    #withLoopVars(vars, fn) {
+    // ctx — контекст строки (#loopScope), он же становится текущим.
+    #withLoopVars(ctx, fn) {
         let saved = {};
-        for (let key of Object.keys(vars)) {
+        for (let key in ctx) {
             saved[key] = this[key];
-            this[key] = vars[key];
+            this[key] = ctx[key];
         }
         let previousLoopCtx = this.#loopContext;
-        this.#loopContext = { ...previousLoopCtx, ...vars };
+        this.#loopContext = ctx;
         try {
             return fn();
         } finally {
@@ -720,6 +829,19 @@ export default class App extends HTMLElement {
                     delete this[key];
             }
         }
+    }
+
+    // Перенос строки #for: новые переменные в её контексте и перезапуск всех эффектов
+    // строки, включая вложенные ветки и циклы. Зависимости собираются заново.
+    #moveRow(entry, vars) {
+        Object.assign(entry.ctx, vars);
+        let effects = [...(this.#ctxEffects.get(entry.ctx) ?? [])];
+        effects.forEach(effect => this.#untrack(effect));
+        // Перезапуск ветки #if может снять эффекты старой ветки — их уже не трогаем.
+        effects.forEach(effect => {
+            if (this.#ctxEffects.get(entry.ctx)?.has(effect))
+                effect();
+        });
     }
 
     #bindLoop(element, attr) {
@@ -740,7 +862,6 @@ export default class App extends HTMLElement {
         element.parentNode.insertBefore(anchor, element);
         let template = element.cloneNode(true);
         element.remove();
-        let usesIndex = template.outerHTML.includes('$index');
         let rendered = new Map();
         let dispose = entry => {
             entry.node.remove();
@@ -758,21 +879,27 @@ export default class App extends HTMLElement {
             entries.forEach(({ value, key, index }) => {
                 let vars = { [itemName]: value, $index: index };
                 if (key !== undefined) vars.$key = key;
-                let id = keyExpr ? this.#withLoopVars(vars, () => this.#evalExpression(keyExpr)) : Symbol();
+                let ctx = this.#loopScope(vars);
+                let id = keyExpr ? this.#withLoopVars(ctx, () => this.#evalExpression(keyExpr)) : Symbol();
                 if (keyExpr && next.has(id))
                     console.warn('Duplicate #key in #for:', loopExpr, id);
                 let prev = rendered.get(id);
-                // Узел переиспользуется, только если не изменились ни элемент, ни путь к нему:
-                // эффекты строки отслеживают путь items.N.*, а не сам объект.
-                if (prev && App.#raw(prev.value) === App.#raw(value) && (prev.index === index || !usesIndex && prev.key === key && !Array.isArray(collection))) {
+                // Строка с тем же ключом и тем же элементом не пересоздаётся, даже если сменила
+                // место: эффекты строки отслеживают путь items.N.*, поэтому они перезапускаются
+                // с новыми переменными цикла. Вложенные <st-app> при этом не пересоздаются.
+                if (prev && App.#raw(prev.value) === App.#raw(value)) {
                     rendered.delete(id);
+                    if (prev.value !== value || prev.index !== index || prev.key !== key) {
+                        Object.assign(prev, { value, index, key });
+                        this.#moveRow(prev, vars);
+                    }
                     next.set(id, prev);
                     ordered.push(prev);
                     return;
                 }
                 let node = template.cloneNode(true);
-                let bindings = this.#withLoopVars(vars, () => this.#collectBindings(() => this.#processNode(node)));
-                let entry = { node, bindings, value, index, key };
+                let bindings = this.#withLoopVars(ctx, () => this.#collectBindings(() => this.#processNode(node)));
+                let entry = { node, bindings, value, index, key, ctx };
                 next.set(id, entry);
                 ordered.push(entry);
             });
@@ -830,7 +957,10 @@ export default class App extends HTMLElement {
                     element[attrName] = !falsy;
             } else {
                 element.setAttribute(attrName, finalValue);
-                // Сравнение - чтобы не сбрасывать курсор в поле при каждом проходе эффекта.
+                // Классы из #class атрибут не знает: возвращаем их после перезаписи.
+                if (attrName === 'class')
+                    App.#classSets.get(element)?.forEach(name => element.classList.add(name));
+                // Сравнение — чтобы не сбрасывать курсор в поле при каждом проходе эффекта.
                 if (live && element.value !== finalValue)
                     element.value = finalValue;
             }
@@ -838,23 +968,34 @@ export default class App extends HTMLElement {
         this.#bindings.push({ type: 'attribute', element, attrName, effect });
     }
 
+    // Возвращает true, если потомков элемента обрабатывать не нужно.
     #processDirectives(element) {
         let attrs = Array.from(element.attributes);
+        // Структурные директивы — раньше остальных атрибутов, где бы ни стояли: иначе
+        // class="{{ }}" перед #for связался бы вне цикла и записал значение в шаблон строки.
+        let structural = attrs.find(attr => attr.name === '#pre' || attr.name === '#if' || attr.name === '#for');
+        if (structural?.name === '#pre') {
+            element.removeAttribute('#pre');
+            return true;
+        }
+        if (structural?.name === '#if') {
+            this.#bindConditional(element, structural);
+            return true;
+        }
+        if (structural?.name === '#for') {
+            this.#bindLoop(element, structural);
+            return true;
+        }
+        let skipChildren = false;
         for (let attr of attrs) {
-            if (attr.name === '#if') {
-                this.#bindConditional(element, attr);
-                element.removeAttribute(attr.name);
-                return true;
-            }
-            else if (attr.name === '#for') {
-                this.#bindLoop(element, attr);
-                element.removeAttribute(attr.name);
-                return true;
-            }
-            else if (attr.name === '#html') {
+            if (attr.name === '#html') {
                 this.#bindHtml(element, attr);
                 element.removeAttribute(attr.name);
-                return true;
+                skipChildren = true;
+            }
+            else if (attr.name === '#class') {
+                this.#bindClass(element, attr);
+                element.removeAttribute(attr.name);
             }
             else if (attr.name === '#show') {
                 this.#bindShow(element, attr);
@@ -866,10 +1007,6 @@ export default class App extends HTMLElement {
             }
             else if (attr.name === '#once')
                 element.removeAttribute(attr.name);
-            else if (attr.name === '#pre') {
-                element.removeAttribute(attr.name);
-                return true;
-            }
             else if (attr.name.startsWith('@')) {
                 this.#bindEvent(element, attr);
                 element.removeAttribute(attr.name);
@@ -877,7 +1014,7 @@ export default class App extends HTMLElement {
             else if (/\{\{.+?\}\}/.test(attr.value))
                 this.#bindAttribute(element, attr);
         }
-        return false;
+        return skipChildren;
     }
 
     #processNode(node) {
@@ -912,8 +1049,9 @@ export default class App extends HTMLElement {
             );
             this.#template = prototype.template;
             let config = prototype.config;
+            this.#helpers = config.helpers ?? {};
             let descriptors = Object.getOwnPropertyDescriptors(config);
-            let skipKeys = new Set(['app', 'setup', 'template', 'events']);
+            let skipKeys = new Set(['app', 'setup', 'template', 'events', 'helpers']);
             Object.entries(descriptors).forEach(([key, descriptor]) => {
                 if (skipKeys.has(key)) return;
                 if (descriptor.get) {

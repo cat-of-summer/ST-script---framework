@@ -11,6 +11,11 @@ export default class Modal {
     #methods = {};
     #state = 'hidden';
     #pending_show = null;
+    // open(): промисы текущего показа и ждущие отложенного show().
+    #resolvers = [];
+    #waiting = [];
+    #result = null;
+    #return_to = null;
     // Куда идёт окно. Меняется синхронно, а state — только в requestAnimationFrame,
     // поэтому show() сразу после hide() видит закрытие по #target.
     #target = 'hidden';
@@ -26,13 +31,27 @@ export default class Modal {
         Modal.#esc_bound = true;
         document.addEventListener('keydown', e => {
             if (e.code !== 'Escape' && e.keyCode !== 27) return;
-            let top = Modal.#open[Modal.#open.length - 1];
+            // Неблокирующие окна (уведомления) не перекрывают Esc окну под ними.
+            let top = Modal.#open.filter(modal => modal.params.blocking).at(-1);
             if (top?.params.close_by_esc) top.hide(e);
         });
     }
 
     get state() {return this.#state;}
     get params() {return this.#params;}
+
+    // Показать окно и дождаться результата: промис разрешается значением из hide(value)
+    // после полного закрытия. Закрытие по Esc, оверлею или [action="close"] даёт null.
+    open(data = null) {
+        return new Promise(resolve => {
+            (this.#target == 'shown' ? this.#resolvers : this.#waiting).push(resolve);
+            this.show(data);
+        });
+    }
+
+    #emit(name, data) {
+        this.content?.dispatchEvent(new CustomEvent(`modal:${name}`, { bubbles: true, detail: { modal: this, data } }));
+    }
 
     clone(params) {
         let content = this.content.cloneNode(true);
@@ -66,6 +85,11 @@ export default class Modal {
 
             close_by_overlay: true,
             close_by_esc: true,
+            // После закрытия вернуть фокус элементу, который был активен до показа.
+            return_focus: true,
+            // false — окно не перекрывает страницу (уведомления): клики мимо контейнера
+            // уходят на страницу, прокрутка не блокируется, Esc его пропускает.
+            blocking: true,
             auto_close: -1,
          
             allow_interrupt: false,
@@ -148,13 +172,13 @@ export default class Modal {
             left: '0',
             right: '0',
             bottom: '0',
-            overflowY: 'auto',
-            overflowX: 'clip',
+            overflowY: this.#params.blocking ? 'auto' : 'visible',
+            overflowX: this.#params.blocking ? 'clip' : 'visible',
             display: 'flex',
             alignItems: 'flex-start',
             justifyContent: loc.includes('left') ? 'flex-start' : loc.includes('right') ? 'flex-end' : 'center',
             zIndex: ++this.#params.zIndex,
-            pointerEvents: 'all',
+            pointerEvents: this.#params.blocking ? 'all' : 'none',
             transition: 'inherit'
         });
 
@@ -204,7 +228,8 @@ export default class Modal {
 
         let toggle = (params) => {
             params.before_func(params.data);
-            
+            this.#emit(params.hide ? 'hide' : 'show', params.data);
+
             clearTimeout(timeout);
 
             this.modal.style.display = 'flex';
@@ -221,6 +246,14 @@ export default class Modal {
                         if (params.hide) this.modal.style.display = 'none';
 
                         params.after_func(params.data);
+                        this.#emit(params.final, params.data);
+
+                        if (params.hide) {
+                            this.#restoreFocus();
+                            let result = this.#result;
+                            this.#result = null;
+                            this.#resolvers.splice(0).forEach(resolve => resolve(result));
+                        }
 
                         // show(), пришедший во время hiding, выполняется после полного закрытия.
                         if (params.hide && this.#pending_show) {
@@ -248,6 +281,13 @@ export default class Modal {
                 Modal.#open = Modal.#open.filter(modal => modal !== this);
                 Modal.#open.push(this);
                 this.#target = 'shown';
+                this.#resolvers.push(...this.#waiting.splice(0));
+
+                // Фокус запоминается только при показе с нуля, не при прерванном закрытии.
+                if (this.#state == 'hidden') {
+                    let active = document.activeElement;
+                    this.#return_to = active && active !== document.body && !this.modal.contains(active) ? active : null;
+                }
 
                 toggle({
                     before_func: this.before_show,
@@ -258,7 +298,7 @@ export default class Modal {
                     data
                 });
 
-                if (this.#params.overlay_scroll_lock && this.overlay) {
+                if (this.#params.overlay_scroll_lock && this.overlay && this.#params.blocking) {
                     default_scroll_behavior = document.documentElement.style.scrollBehavior;
 
                     body_inline_styles = document.body.style;
@@ -293,6 +333,9 @@ export default class Modal {
         };
 
         this.hide = (data = null) => {
+            // Отложенный show() отменён: ждущие его open() получают null.
+            if (this.#pending_show)
+                this.#waiting.splice(0).forEach(resolve => resolve(null));
             this.#pending_show = null;
 
             if (
@@ -301,6 +344,8 @@ export default class Modal {
             ) {
                 Modal.#open = Modal.#open.filter(modal => modal !== this);
                 this.#target = 'hidden';
+                // Esc и клик по оверлею передают событие — это не результат.
+                this.#result = data instanceof Event ? null : data;
 
                 toggle({
                     before_func: this.before_hide,
@@ -335,5 +380,16 @@ export default class Modal {
             });
         
         this.on_init(this.#params);
+    }
+
+    // Фокус возвращается, только если он остался в окне или ушёл на body: пользователь,
+    // успевший перейти в другое место, его не теряет.
+    #restoreFocus() {
+        let target = this.#return_to;
+        this.#return_to = null;
+        if (!this.#params.return_focus || !target?.isConnected) return;
+        let active = document.activeElement;
+        if (active && active !== document.body && !this.modal.contains(active)) return;
+        target.focus?.({ preventScroll: true });
     }
 }
