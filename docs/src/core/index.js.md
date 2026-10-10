@@ -73,7 +73,7 @@ Core.download(JSON.stringify(data), 'export.json', 'application/json');
 
 ### `Core.fetch(params)`
 
-Обёртка над `XMLHttpRequest`. Возвращает thenable-объект с управлением запросом и событиями. Сам запрос уходит в микрозадаче (`queueMicrotask`), поэтому обработчики событий можно навешивать цепочкой сразу после вызова.
+Обёртка над `XMLHttpRequest`, а не над браузерным `fetch`. Возвращает объект `api`: у него есть методы промиса (`then`, `catch`, `finally`), а также отмена запроса и подписка на события - см. [возвращаемый объект](#возвращаемый-объект-api). Сам запрос уходит в микрозадаче (`queueMicrotask`), поэтому обработчики событий можно навешивать цепочкой сразу после вызова.
 
 Аргументом можно передать как объект параметров, так и `HTMLFormElement` — тогда `url`, `method` и `data` берутся из атрибутов формы (`action`, `method`) и её полей, включая скрытые.
 
@@ -115,11 +115,34 @@ Core.download(JSON.stringify(data), 'export.json', 'application/json');
 - `response` — разобранное тело ответа (см. выше): сервер ответил на 422 JSON-ом — придёт объект, текстом — строка.
 - `status` — HTTP-статус; `0` при сетевой ошибке и таймауте (тело тогда пустое); `undefined`, если исключение случилось до отправки — в этом случае `response` содержит само исключение, а `request` отсутствует.
 
-**Возвращаемый объект (`api`):**
+#### Возвращаемый объект (`api`)
 
-- `.then(onFulfilled, onRejected)`, `.catch(onRejected)`, `.finally(fn)` — объект является thenable, успех резолвит `{ data, request }`, ошибка реджектит payload `on_failed`.
-- `.abort()` — прерывает запрос.
-- `.beforeSend / .onSend / .onSuccess / .onComplete / .onFailed` — регистрируют дополнительные обработчики, возвращают `api` (можно чейнить).
+- `.then(onFulfilled, onRejected)`, `.catch(onRejected)`, `.finally(fn)` - успех резолвит `{ data, request }`, ошибка реджектит payload `on_failed`.
+- `.abort()` - прерывает запрос: промис реджектится со `status: 0`, как при сетевой ошибке, `on_failed` и `on_complete` вызываются.
+- `.beforeSend / .onSend / .onSuccess / .onComplete / .onFailed` - регистрируют дополнительные обработчики, возвращают `api` (можно чейнить).
+
+Сам `api` - не `Promise` (`api instanceof Promise === false`), а thenable: объект с методом `then`. Для языка этого достаточно - `await Core.fetch(...)`, `Promise.all([...])` и возврат из `.then` другого промиса работают с ним как с промисом.
+
+`.then`, `.catch` и `.finally` возвращают **обычный `Promise`**. Поэтому, чтобы переделать результат - достать `data`, превратить отказ в свою ошибку, - достаточно цепочки; оборачивать вызов в `new Promise((resolve, reject) => ...)` не нужно:
+
+```js
+// результат — Promise с телом ответа, отказ — своя ошибка
+const load = url => Core.fetch({ url }).then(
+    ({ data }) => data,
+    ({ status, response }) => { throw new ApiError(status, response); },
+);
+```
+
+У этого `Promise` уже нет `abort()` и методов событий - они есть только у самого `api`. Нужна отмена - сохранить `api` в переменную до `.then`:
+
+```js
+const query = Core.fetch({ url: '/api/search', data: { q } });
+query.then(({ data }) => render(data));
+// ...
+query.abort();
+```
+
+`abort()` действует только после того, как запрос ушёл, то есть с микрозадачи. Вызов в том же синхронном коде, что и `Core.fetch(...)`, запрос не отменяет.
 
 ## Примеры
 

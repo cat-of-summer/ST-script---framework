@@ -3,6 +3,7 @@
 // движок это модуль src/mask/_engine.js с плоскими экспортами.
 
 import { compile, build, run, run_all, render, caret_for, cap } from '../src/mask/_engine.js';
+import { spans, type_ahead, settle, step, in_range } from '../src/mask/_groups.js';
 
 let failed = 0, passed = 0;
 
@@ -396,6 +397,91 @@ eq(render(run(positional, '12'), 'always'), '12.ММ.ГГГГ', 'позицио�
     eq(caret_for(r, 0), 0, 'каретка перед трансформацией');
     eq(caret_for(r, 1), 0, 'внутри юнита «+7» — прижата к началу (атомарность)');
     eq(r.stop_fmt, 5, 'точка вставки «+7 (9|»');
+}
+
+// ---------------------------------------------------------------------------
+// Именованные группы {имя:подшаблон}
+// ---------------------------------------------------------------------------
+
+{
+    let nodes = compile('{dd:00}.{mm:00}');
+    eq(nodes.map(n => n.group ?? null), ['dd', 'dd', null, 'mm', 'mm'], 'группа помечает свои узлы, разделитель вне групп');
+    eq(compile('{ip:{0;1-3}}')[0].children[0].group, 'ip', 'группа помечает узлы внутри повторителя');
+    eq(compile('{0;1-3}')[0].type, 'repeat', 'повторитель группой не считается');
+
+    let warn = console.warn; console.warn = () => {};
+    eq(compile('{a:{b:0}}').every(n => n.type == 'literal'), true, 'вложенная группа → литералы');
+    console.warn = warn;
+}
+
+const gdate = def('{dd:00}.{mm:00}.{yyyy:0000}',
+    { groups: { dd: { filler: 'ДД' }, mm: { filler: 'ММ' }, yyyy: { filler: 'ГГГГ' } } });
+
+eq(gdate.fixed, true, 'маска из групп фиксированная');
+eq(gdate.names, ['dd', 'mm', 'yyyy'], 'имена групп по порядку');
+eq(run(gdate, '12032026').groups, { dd: '12', mm: '03', yyyy: '2026' }, 'run().groups');
+eq(run(gdate, '12.3').groups, { dd: '12', mm: '3', yyyy: '' }, 'незаполненные группы - частично или пусто');
+eq(render(run(gdate, '1'), 'always'), '1Д.ММ.ГГГГ', 'filler группы - по номеру слота внутри группы');
+eq(render(run(gdate, 'Д1'), 'always'), 'Д1.ММ.ГГГГ', 'filler группы распознаётся как дырка');
+eq(run(def('00.00'), '12').groups, {}, 'без групп - пустой словарь');
+
+// ---------------------------------------------------------------------------
+// Группы поверх раскладки (_groups.js)
+// ---------------------------------------------------------------------------
+
+const layout_of = d => {
+    let r = run(d, '');
+    return { slots: r.ph_slots };
+};
+
+const date_params = {
+    edit: 'whole', pad: '0', align: 'right', min: null, max: null,
+    groups: { dd: { min: 1, max: 31 }, mm: { min: 1, max: 12 }, yyyy: { min: 1 } }
+};
+
+{
+    let [dd, mm, yyyy] = spans(layout_of(gdate), date_params);
+    eq([dd.name, dd.first, dd.last, dd.start, dd.end], ['dd', 0, 1, 0, 2], 'span ДД');
+    eq([mm.start, mm.end, yyyy.start, yyyy.end], [3, 5, 6, 10], 'span ММ и ГГГГ');
+    eq([dd.opts.max, dd.opts.edit, dd.opts.pad], [31, 'whole', '0'], 'настройки группы = верхний уровень + groups[имя]');
+    eq(dd.digits, true, 'цифровая группа');
+
+    let one = spans(layout_of(def('00.00')), { edit: 'end' });
+    eq([one.length, one[0].name, one[0].start, one[0].end], [1, null, 0, 5], 'без групп - одна неявная группа на всё поле');
+
+    let typed = (g, chars) => {
+        let buffer = '', out = [];
+        for (let c of chars) {
+            let r = type_ahead(g, buffer, c);
+            out.push(r.cells.join('') + (r.advance ? '→' : ''));
+            buffer = r.advance ? '' : r.buffer;
+        }
+        return out;
+    };
+
+    eq(typed(dd, '12'), ['01', '12→'], 'ДД: 1 → 01, 2 → 12 и переход');
+    eq(typed(dd, '4'), ['04→'], 'ДД: 4 → 04 сразу с переходом (40 > 31)');
+    eq(typed(dd, '35'), ['03', '31→'], 'ДД: 35 зажимается до 31');
+    eq(typed(dd, '05'), ['00', '05→'], 'ДД: 0, 5 → 05');
+    eq(typed(mm, '2'), ['02→'], 'ММ: 2 → 02 сразу (20 > 12)');
+    eq(typed(yyyy, '2026'), ['0002', '0020', '0202', '2026→'], 'ГГГГ: цифры въезжают справа');
+
+    let left = spans(layout_of(gdate), { groups: {} })[0];
+    eq(type_ahead(left, '', '1').cells, ['1', null], 'align left без pad: остальные ячейки пусты');
+
+    eq(settle(dd, ['0', '0']), ['0', '1'], 'уход из группы: 00 → min');
+    eq(settle(dd, ['0', null]), ['0', null], 'незаполненная группа не трогается');
+
+    eq(step(dd, ['3', '1'], 1), ['0', '1'], '↑ по кругу: 31 → 01');
+    eq(step(mm, ['0', '1'], -1), ['1', '2'], '↓ по кругу: 01 → 12');
+    eq(step(dd, [null, null], -1), ['3', '1'], '↓ по пустой группе → max');
+    eq(step(yyyy, [null, null, null, null], 1), ['0', '0', '0', '1'], '↑ по пустой → min');
+    eq(step(one[0], ['9', '9', '9', '9'], 1), ['0', '0', '0', '0'], 'без min/max - 0…99…9');
+    eq(step(spans(layout_of(def('aa')), {})[0], ['a', 'b'], 1), null, 'нецифровая группа без шага');
+
+    eq(in_range(['dd', 'mm'], { dd: '32', mm: '01' }, date_params), false, 'in_range: 32 > max');
+    eq(in_range(['dd', 'mm'], { dd: '3', mm: '' }, date_params), true, 'in_range: неполное не нарушает');
+    eq(in_range([], { null: '150' }, { max: 100 }), false, 'in_range: неявная группа по raw');
 }
 
 // ---------------------------------------------------------------------------

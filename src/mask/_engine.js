@@ -33,11 +33,23 @@ function last_top(body, needle) {
     return found;
 }
 
+// Помечает узлы группы её именем. Группы не вкладываются: узел с чужой меткой - отказ
+function tag(nodes, name) {
+    return nodes.every(node => node.group == null
+        && (node.group = name, !node.children || tag(node.children, name)));
+}
+
 function classify(body) {
     let fail = () => {
         console.warn('Некорректный блок маски', `{${body}}`);
         return [...`{${body}}`].map(char => ({ type: 'literal', char }));
     };
+
+    let named = /^([A-Za-z_]\w*):/.exec(body);
+    if (named) {
+        let children = compile(body.slice(named[0].length));
+        return tag(children, named[1]) ? children : fail();
+    }
 
     let semi = last_top(body, ';');
     if (semi > 0) {
@@ -92,6 +104,14 @@ function is_fixed(nodes) {
         || node.type == 'repeat' && node.min == node.max && is_fixed(node.children));
 }
 
+function group_names(nodes, names = new Set()) {
+    for (let node of nodes) {
+        if (node.group != null) names.add(node.group);
+        if (node.children) group_names(node.children, names);
+    }
+    return names;
+}
+
 export function build(mask, base = {}) {
     if (mask && typeof mask == 'object' && !Array.isArray(mask) && !(mask instanceof RegExp)
         && mask.pattern == null && mask.filter == null && mask.numeral == null)
@@ -114,8 +134,13 @@ export function build(mask, base = {}) {
             : [{ type: 'repeat', min: 0, max: m.max_length ?? Infinity, greedy: true,
                  children: [{ type: 'slot', test: no_g(m.filter) }] }];
 
+        let groups = m.groups ?? base.groups ?? {};
+
         return {
             nodes,
+            names: [...group_names(nodes)],
+            fills: Object.fromEntries(Object.entries(groups)
+                .filter(([, g]) => g?.filler != null).map(([name, g]) => [name, g.filler])),
             fixed: m.pattern != null && is_fixed(nodes),
             valid: m.valid ? no_g(m.valid) : (m.filter ? /./ : null),
             message: m.message,
@@ -129,9 +154,12 @@ export function build(mask, base = {}) {
     return defs;
 }
 
-export function filler(def, ordinal) {
-    let f = def.filler ?? '_';
-    return f[ordinal] ?? f.at(-1) ?? '_';
+// Заполнитель слота: у группы со своим filler - по номеру слота внутри группы,
+// иначе - по сквозному номеру слота из filler маски
+export function filler(def, ordinal, group, local) {
+    let f = def.fills?.[group];
+    if (f == null) f = def.filler ?? '_', local = ordinal;
+    return f[local] ?? f.at(-1) ?? '_';
 }
 
 export function prepare(def, input_string, ctx) {
@@ -167,14 +195,15 @@ function consumes(nodes, c, s, entry) {
     return entry ? nodes.some(node => node.type == 'literal' && node.char === c) : false;
 }
 
-function accept(s, text, fmt_text, kind = 'char', ordinal = null) {
+function accept(s, text, fmt_text, kind = 'char', ordinal = null, group = null) {
     s.units.push({
-        kind, ordinal,
+        kind, ordinal, group,
         stream_start: s.stream.length, stream_end: s.stream.length + text.length,
         fmt_start: s.formatted.length, fmt_end: s.formatted.length + fmt_text.length
     });
     s.stream += text;
     if (kind == 'char') s.raw += text;
+    if (kind == 'char' && group != null) s.groups[group] += text;
     if (ordinal != null) s.cells[ordinal] = kind == 'char' ? text : null;
     s.formatted += fmt_text;
 }
@@ -212,9 +241,11 @@ function walk(nodes, s, def) {
             } else s.tail += node.char;
 
         } else if (node.type == 'slot') {
-            let ordinal = s.ordinal++, fill = filler(def, ordinal);
+            let ordinal = s.ordinal++, group = node.group ?? null;
+            let local = group == null ? null : s.local[group] = (s.local[group] ?? -1) + 1;
+            let fill = filler(def, ordinal, group, local);
             if (s.done) {
-                s.ph_slots.push({ fmt: s.formatted.length + s.tail.length + s.ph.length, node });
+                s.ph_slots.push({ fmt: s.formatted.length + s.tail.length + s.ph.length, node, fill });
                 s.ph += fill;
                 continue;
             }
@@ -222,7 +253,7 @@ function walk(nodes, s, def) {
             for (;;) {
                 if (s.ip >= s.input.length) {
                     exhaust(s);
-                    s.ph_slots.push({ fmt: s.formatted.length + s.tail.length, node });
+                    s.ph_slots.push({ fmt: s.formatted.length + s.tail.length, node, fill });
                     s.ph += fill;
                     break;
                 }
@@ -238,10 +269,10 @@ function walk(nodes, s, def) {
                             continue;
                         }
                     }
-                    accept(s, c, c, 'char', ordinal);
+                    accept(s, c, c, 'char', ordinal, group);
                 } else if (c === fill) {
                     s.complete = false;
-                    accept(s, c, c, 'hole', ordinal);
+                    accept(s, c, c, 'hole', ordinal, group);
                 } else { s.ip++; continue; }
                 s.ip++;
                 s.consumed++;
@@ -335,8 +366,8 @@ function numeral(def, input_string) {
             body += o.decimal;
             for (let i = 1; i <= o.fraction; i++) body += filler(def, i);
         }
-        return { stream: '', raw: '', formatted: '', tail: '', ph: body + o.suffix,
-            ph_slots: [], complete: false, consumed: 0, lead: 0, units: [], cells: [], stop_fmt: body.length };
+        return { stream: '', raw: '', formatted: '', tail: '', ph: body + o.suffix, ph_slots: [],
+            complete: false, consumed: 0, lead: 0, units: [], cells: [], groups: {}, stop_fmt: body.length };
     }
 
     let f = o.fraction;
@@ -373,7 +404,7 @@ function numeral(def, input_string) {
     let complete = (o.min == null || value >= o.min) && (o.max == null || value <= o.max);
 
     return { stream: raw, raw, formatted, tail: '', ph: '', ph_slots: [],
-        complete, consumed: raw.length, lead: 0, units, cells: [], stop_fmt };
+        complete, consumed: raw.length, lead: 0, units, cells: [], groups: {}, stop_fmt };
 }
 
 export function run(def, input_string, ctx) {
@@ -385,6 +416,7 @@ export function run(def, input_string, ctx) {
         ip: 0,
         stream: '', raw: '', formatted: '', tail: '', ph: '',
         ph_slots: [], units: [], cells: [],
+        groups: Object.fromEntries((def.names ?? []).map(name => [name, ''])), local: {},
         consumed: 0, lead: 0, diverged: false, ordinal: 0,
         complete: true, done: false, stop_fmt: -1
     };
@@ -396,7 +428,7 @@ export function run(def, input_string, ctx) {
     return {
         stream: s.stream, raw: s.raw, formatted: s.formatted, tail: s.tail,
         ph: s.ph, ph_slots: s.ph_slots, complete: s.complete, consumed: s.consumed,
-        lead: s.lead, units: s.units, cells: s.cells, stop_fmt: s.stop_fmt
+        lead: s.lead, units: s.units, cells: s.cells, groups: s.groups, stop_fmt: s.stop_fmt
     };
 }
 

@@ -876,6 +876,112 @@ await test('Route: static-режим разбирает адрес один ра
     await page.close();
 });
 
+// ---------------------------------------------------------------------------
+// Mask: группы и edit
+// ---------------------------------------------------------------------------
+
+const DATE_WHOLE = `new Mask({ target: '#d', mask: '{dd:00}.{mm:00}.{yyyy:0000}', placeholder: 'always',
+    edit: 'whole', align: 'right', pad: '0',
+    groups: { dd: { filler: 'ДД', min: 1, max: 31 }, mm: { filler: 'ММ', min: 1, max: 12 }, yyyy: { filler: 'ГГГГ', min: 1 } } })`;
+
+const field = page => page.$eval('#d', d => [d.value, d.selectionStart, d.selectionEnd]);
+
+async function open_mask(init) {
+    let page = await open(`<input id="before"><input id="d"><input id="after">`, ['mask']);
+    await page.evaluate(init);
+    return page;
+}
+
+await test('Mask whole: клик выделяет группу целиком, набор как у input[type=date]', async () => {
+    let page = await open_mask(DATE_WHOLE);
+    await page.focus('#before');
+    await page.keyboard.press('Tab');
+    eq(await field(page), ['ДД.ММ.ГГГГ', 0, 2], 'Tab в поле выделяет первую группу');
+
+    await page.keyboard.type('1');
+    eq(await field(page), ['01.ММ.ГГГГ', 0, 2], '1 → 01, группа остаётся выделенной');
+    await page.keyboard.type('2');
+    eq(await field(page), ['12.ММ.ГГГГ', 3, 5], '12 → переход в ММ');
+    await page.keyboard.type('3');
+    eq(await field(page), ['12.03.ГГГГ', 6, 10], 'ММ: 3 → 03 сразу с переходом');
+    await page.keyboard.type('2026');
+    eq(await field(page), ['12.03.2026', 6, 10], 'год въезжает справа, остаётся выделенным');
+    eq(await page.$eval('#d', d => d.state().groups), { dd: '12', mm: '03', yyyy: '2026' }, 'state().groups');
+    eq(await page.$eval('#d', d => d.getAttribute('is_complete')), 'true', 'полная дата - complete');
+
+    let box = await page.$eval('#d', d => { let r = d.getBoundingClientRect(); return [r.x, r.y, r.height]; });
+    await page.mouse.click(box[0] + 12, box[1] + box[2] / 2);
+    let [, s, e] = await field(page);
+    eq([s, e], [0, 2], 'клик в ДД выделяет ДД целиком');
+    await page.keyboard.type('5');
+    eq(await field(page), ['05.03.2026', 3, 5], 'клик сбрасывает буфер: 5 → 05 и переход');
+    await page.close();
+});
+
+await test('Mask whole: стрелки, Tab, ↑/↓, Backspace, вставка', async () => {
+    let page = await open_mask(DATE_WHOLE);
+    await page.focus('#d');
+    await page.evaluate(() => document.querySelector('#d').set('12.12.2026'));
+    await page.evaluate(() => document.querySelector('#d').setSelectionRange(0, 2));
+    await page.keyboard.press('ArrowRight');
+    eq(await field(page), ['12.12.2026', 3, 5], '→ на ММ');
+    await page.keyboard.press('ArrowUp');
+    eq(await field(page), ['12.01.2026', 3, 5], '↑ по кругу: 12 → 01');
+    await page.keyboard.press('ArrowDown');
+    eq((await field(page))[0], '12.12.2026', '↓ обратно: 01 → 12');
+    await page.keyboard.press('Tab');
+    eq(await field(page), ['12.12.2026', 6, 10], 'Tab на ГГГГ');
+    await page.keyboard.press('Shift+Tab');
+    eq(await field(page), ['12.12.2026', 3, 5], 'Shift+Tab назад на ММ');
+    await page.keyboard.press('Backspace');
+    eq(await field(page), ['12.ММ.2026', 3, 5], 'Backspace чистит группу целиком');
+    await page.keyboard.press('Backspace');
+    eq(await field(page), ['12.ММ.2026', 0, 2], 'Backspace по пустой группе - на предыдущую');
+    await page.keyboard.press('ArrowLeft');
+    eq((await field(page)).slice(1), [0, 2], '← с первой группы остаётся на ней');
+
+    await page.keyboard.press('End');
+    await page.keyboard.press('Tab');
+    eq(await page.evaluate(() => document.activeElement.id), 'after', 'Tab с последней группы уводит из поля');
+
+    await page.focus('#d');
+    await page.$eval('#d', d => {
+        let dt = new DataTransfer();
+        dt.setData('text/plain', '01.02.2003');
+        d.setSelectionRange(0, 2);
+        d.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertFromPaste', dataTransfer: dt, bubbles: true, cancelable: true }));
+    });
+    eq((await field(page))[0], '01.02.2003', 'вставка раскладывается по группам');
+    eq(page.errors, [], 'без ошибок и предупреждений');
+    await page.close();
+});
+
+await test('Mask end: каретка прижата к концу группы, частичное выделение → группа', async () => {
+    let page = await open_mask(`new Mask({ target: '#d', mask: '{dd:00}.{mm:00}.{yyyy:0000}', placeholder: 'always',
+        edit: 'end', filler: 'ДДММГГГГ' })`);
+    await page.focus('#d');
+    await page.evaluate(() => document.querySelector('#d').set('1203'));
+    await page.$eval('#d', d => d.setSelectionRange(1, 1));
+    await page.keyboard.type('5');
+    eq((await field(page))[0], '12.03.5ГГГ', 'набор из середины ДД идёт с конца набранного');
+    await page.$eval('#d', d => d.setSelectionRange(4, 5));
+    await tick(page);
+    eq((await field(page)).slice(1), [3, 5], 'частичное выделение ММ расширяется до ММ');
+    await page.close();
+});
+
+await test('Mask free: набор без групп не изменился', async () => {
+    let page = await open_mask(`new Mask({ target: '#d', mask: '00.00.0000', placeholder: 'always', filler: 'ДДММГГГГ' })`);
+    await page.focus('#d');
+    await page.keyboard.type('1203');
+    eq(await field(page), ['12.03.ГГГГ', 6, 6], 'сквозной набор');
+    await page.$eval('#d', d => d.setSelectionRange(7, 7));
+    await page.keyboard.type('9');
+    eq((await field(page))[0], '12.03.Г9ГГ', 'клик в середину ГГГГ пишет поверх ячейки');
+    eq(page.errors, [], 'без ошибок и предупреждений');
+    await page.close();
+});
+
 await browser.close();
 
 console.log(`${passed} passed, ${failed} failed`);

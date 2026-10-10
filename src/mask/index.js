@@ -1,5 +1,6 @@
 import { element, elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
-import { build, run, run_all, render, caret_for, cap, prepare, filler } from './_engine.js';
+import { build, run, run_all, render, caret_for, cap, prepare } from './_engine.js';
+import { spans, type_ahead, settle, step, in_range } from './_groups.js';
 
 const CALLBACKS = ['before_init', 'on_init', 'before_char', 'before_slot', 'before_input',
     'on_input', 'before_paste', 'on_paste', 'on_accept', 'on_complete', 'on_incomplete', 'on_mask_change'];
@@ -55,8 +56,12 @@ export default class Mask {
             numeral: null,
             filler: '_',
             placeholder: true,
-            flow: true,
-            rewrite: false,
+            edit: 'free',
+            pad: null,
+            align: 'left',
+            min: null,
+            max: null,
+            groups: {},
             caret: true,
             coerce_type: true,
             max_raw: null,
@@ -120,7 +125,7 @@ export default class Mask {
             let st = this.#states.get(input);
             if (!st) continue;
             st.defs = defs;
-            st.run = null;
+            st.seg = null;
             this.#reconcile(input, st.stream, {});
         }
     }
@@ -128,6 +133,7 @@ export default class Mask {
     #base() {
         return {
             filler: this.#params.filler,
+            groups: this.#params.groups,
             before_char: this.before_char,
             before_slot: this.before_slot
         };
@@ -168,7 +174,7 @@ export default class Mask {
         }
 
         let numeric = coerced == 'number' || this.#params.numeral != null;
-        let st = { defs, def: null, stream: '', result: null, mask_id: null, rendered: '', run: null, composing: false, handled: false, coerced, max_raw, numeric };
+        let st = { defs, def: null, stream: '', result: null, mask_id: null, rendered: '', seg: null, composing: false, handled: false, coerced, max_raw, numeric };
         this.#states.set(input, st);
         this.#inputs.push(input);
 
@@ -186,10 +192,15 @@ export default class Mask {
 
         input.addEventListener('beforeinput', event => this.#before(input, event));
 
-        if (this.#params.caret !== true) {
-            let pin = () => this.#pin(input);
+        let edits = [this.#params.edit, ...Object.values(this.#params.groups ?? {}).map(g => g?.edit)];
+        if (edits.includes('whole') && (this.#params.placeholder != 'always' || defs.some(d => !d.fixed && !d.fn)))
+            console.warn("Mask: edit: 'whole' работает с фиксированной маской и placeholder: 'always' - иначе ведёт себя как 'end'", input);
+
+        if (edits.some(edit => edit && edit != 'free')) {
+            let pin = event => this.#pin(input, event.type == 'click');
             for (let event of ['selectionchange', 'click', 'keyup', 'select'])
                 input.addEventListener(event, pin);
+            input.addEventListener('keydown', event => this.#key(input, event));
         }
 
         let refresh = () => {
@@ -203,11 +214,16 @@ export default class Mask {
         input.addEventListener('compositionstart', () => st.composing = true);
         input.addEventListener('compositionend', () => { st.composing = false; this.#refresh(input); });
 
-        input.addEventListener('focus', () => {
+        input.addEventListener('focus', event => {
             hide();
             this.#reconcile(input, st.stream, { prefix: st.stream, silent: true });
+            this.#enter(input, event.relatedTarget);
         });
-        input.addEventListener('blur',  () => { st.run = null; this.#reconcile(input, st.stream, { silent: true }); });
+        input.addEventListener('blur', () => {
+            this.#settle(input);
+            st.seg = null;
+            this.#reconcile(input, st.stream, { silent: true });
+        });
 
         input.closest('form')?.addEventListener('reset', () => queueMicrotask(() => this.#refresh(input)));
 
@@ -226,9 +242,11 @@ export default class Mask {
         if (type == 'historyUndo' || type == 'historyRedo') return;
 
         let start = input.selectionStart ?? 0, end = input.selectionEnd ?? start;
+        let { g, edit } = this.#mode(st, start, end);
 
-        if (this.#params.caret !== true && st.result && !(start == 0 && end == input.value.length))
-            start = end = this.#tail_of(input, st, start);
+        if (edit == 'end' && st.result && !(start == 0 && end == input.value.length)
+            && !(g && start == g.start && end == g.end))
+            start = end = this.#tail_of(input, st, g);
 
         event.preventDefault();
         st.handled = true;
@@ -256,9 +274,9 @@ export default class Mask {
 
         let was = input.value;
 
-        this.#params.placeholder == 'always' && st.def?.fixed
-            ? this.#grid(input, type, start, end, is_delete ? '' : insert)
-            : this.#edit(input, start, end, is_delete ? '' : insert, type);
+        if (edit == 'whole') this.#segment(input, type, is_delete ? '' : insert);
+        else if (this.#layout_of(st)) this.#grid(input, type, start, end, is_delete ? '' : insert);
+        else this.#edit(input, start, end, is_delete ? '' : insert, type);
 
         if (type == 'insertFromPaste') this.on_paste(input, this.#state_of(input, st));
 
@@ -298,145 +316,272 @@ export default class Mask {
 
     #grid(input, type, fmt_start, fmt_end, insert) {
         let st = this.#states.get(input), def = st.def;
-        let layout = def.layout ??= Mask.#layout(def);
-        let slots = layout.slots, parts = layout.parts, n = slots.length;
-        let flow = this.#params.flow, rewrite = this.#params.rewrite;
+        let layout = this.#layout_of(st);
+        let { slots, parts } = layout, n = slots.length;
 
-        let cells = Array.from({ length: n }, (_, i) => st.result?.cells?.[i] ?? null);
+        let cells = this.#cells(st, layout);
 
         let at = fmt => { let k = slots.findIndex(slot => slot.fmt >= fmt); return k < 0 ? n : k; };
         let gap = i => layout.template.slice(slots[i - 1].fmt + 1, slots[i].fmt);
-        let k, anchor = null, restart = null;
+        let k;
 
         if (fmt_start != fmt_end) {
             k = at(fmt_start);
             for (let i = k; i < n && slots[i].fmt < fmt_end; i++) cells[i] = null;
-            st.run = null;
         } else if (!insert && type.startsWith('delete')) {
             if (type.includes('Forward')) {
-                if ((k = at(fmt_start)) >= n) return;
-                let limit = parts[k];
+                k = at(fmt_start);
                 while (k < n && cells[k] == null) k++;
-                if (k >= n || !flow && parts[k] != limit) return;
+                if (k >= n) return;
             } else {
-                let edge = -1;
-                for (let i = 0; i < n; i++) if (slots[i].fmt < fmt_start) edge = i;
-                if (edge < 0) return;
-                k = edge;
+                k = -1;
+                for (let i = 0; i < n; i++) if (slots[i].fmt < fmt_start) k = i;
                 while (k >= 0 && cells[k] == null) k--;
-                if (k < 0 || !flow && (parts[k] != parts[edge] || fmt_start > slots[edge].fmt + 1)) return;
+                if (k < 0) return;
             }
             cells[k] = null;
         } else {
             k = at(fmt_start);
             if (k >= n && (k = cells.indexOf(null)) < 0) k = n;
-            anchor = this.#anchor_at(layout, k, fmt_start);
-
-            if (rewrite) {
-                let part = anchor ?? parts[Math.min(k, n - 1)];
-                if (st.run?.part !== part || st.run.k !== k || parts[k] !== part) restart = part;
-            }
         }
 
-        anchor ??= k < n ? parts[k] : null;
-        let crossed = null;
-
         for (let c of prepare(def, insert, { input })) {
-            if (k >= n) {
-                if (restart == null) break;
-                k = parts.indexOf(restart);
-            }
-
-            if (!flow && parts[k] != anchor) {
-                if (gap(k).includes(c)) {
-                    anchor = parts[k];
-                    crossed = k;
-                    restart = rewrite ? parts[k] : null;
-                    continue;
-                }
-                if (restart == null) continue;
-                k = parts.indexOf(restart);
-            }
+            if (k >= n) break;
 
             if (!slots[k].node.test.test(c)) {
+                // Разделитель следующего блока переводит набор в этот блок
                 let end = parts.lastIndexOf(parts[k]);
-                if (end + 1 < n && gap(end + 1).includes(c)) {
-                    k = end + 1;
-                    anchor = parts[k];
-                    crossed = k;
-                    restart = rewrite ? parts[k] : null;
-                }
+                if (end + 1 < n && gap(end + 1).includes(c)) k = end + 1;
                 continue;
-            }
-
-            if (restart != null) {
-                for (let i = 0; i < n; i++) if (parts[i] == restart) cells[i] = null;
-                k = parts.indexOf(restart);
-                anchor = restart;
-                restart = null;
             }
 
             cells[k++] = c;
         }
 
-        let last = cells.reduce((acc, cell, i) => cell != null ? i : acc, -1);
-        let stream = cells.slice(0, last + 1).map((cell, i) => cell ?? filler(def, i)).join('');
-
+        let stream = this.#stream(layout, cells);
         let pos = Math.min(run(def, stream.slice(0, k), { input }).stream.length, n);
-        let caret = pos < n ? slots[pos].fmt : slots[n - 1].fmt + 1;
-        if (!flow && insert && pos > 0 && pos < n && parts[pos] != parts[pos - 1])
-            caret = slots[pos - 1].fmt + 1;
-        if (crossed != null && k == crossed) caret = slots[crossed].fmt;
-
-        let kn = at(caret);
-        st.run = crossed != null ? null
-            : { part: this.#anchor_at(layout, kn, caret) ?? parts[Math.min(kn, n - 1)], k: kn };
-        this.#reconcile(input, stream, { caret_fmt: caret });
+        this.#reconcile(input, stream, { caret_fmt: pos < n ? slots[pos].fmt : slots[n - 1].fmt + 1 });
     }
 
-    #pin(input) {
+    // edit: 'whole' - набор в выделенную группу как в <input type=date>: буфер группы
+    // начинается с нуля при входе в неё, заполненная группа передаёт набор следующей,
+    // разделитель закрывает группу досрочно, удаление очищает группу целиком
+    #segment(input, type, insert) {
+        let st = this.#states.get(input), layout = this.#layout_of(st), groups = layout.spans;
+        let seg = this.#seg(input, st);
+        let cells = this.#cells(st, layout);
+        let part = g => cells.slice(g.first, g.last + 1);
+        let put = (g, values) => cells.splice(g.first, values.length, ...values);
+        let g = groups[seg.gi];
+
+        if (type.startsWith('delete')) {
+            if (part(g).every(cell => cell == null)) {
+                if (type.includes('Backward') && seg.gi > 0) this.#select(input, seg.gi - 1);
+                return;
+            }
+            put(g, part(g).fill(null));
+            seg.buffer = '';
+        } else {
+            if (type == 'insertFromPaste') seg.buffer = '';
+
+            for (let c of prepare(st.def, insert, { input })) {
+                g = groups[seg.gi];
+                let next = groups[seg.gi + 1];
+
+                if (next && layout.template.slice(g.end, next.start).includes(c)) {
+                    if (seg.buffer) {
+                        put(g, settle(g, part(g)));
+                        seg.gi++;
+                        seg.buffer = '';
+                    }
+                    continue;
+                }
+
+                let slot = layout.slots[g.first + Math.min(seg.buffer.length, g.fmts.length - 1)];
+                if (!slot.node.test.test(c)) continue;
+
+                let typed = type_ahead(g, seg.buffer, c);
+                put(g, typed.cells);
+                seg.buffer = typed.buffer;
+
+                if (typed.advance) {
+                    put(g, settle(g, part(g)));
+                    seg.buffer = '';
+                    if (next) seg.gi++;
+                }
+            }
+        }
+
+        this.#reconcile(input, this.#stream(layout, cells), {});
+        this.#select(input, seg.gi, false);
+    }
+
+    // Клавиши режима 'whole': ←/→, Home/End и Tab/Shift+Tab ходят по группам (Tab с крайней
+    // группы уводит из поля как обычно), ↑/↓ меняют значение группы по кругу
+    #key(input, event) {
+        let st = this.#states.get(input);
+        if (event.altKey || event.ctrlKey || event.metaKey || !st?.result) return;
+
+        let { g, edit } = this.#mode(st, input.selectionStart ?? 0, input.selectionEnd ?? 0);
+        if (edit != 'whole') return;
+
+        let groups = this.#layout_of(st).spans, last = groups.length - 1;
+        let gi = this.#seg(input, st).gi, to;
+
+        switch (event.key) {
+            case 'ArrowLeft':  to = gi - 1; break;
+            case 'ArrowRight': to = gi + 1; break;
+            case 'Home':       to = 0; break;
+            case 'End':        to = last; break;
+            case 'Tab':
+                to = gi + (event.shiftKey ? -1 : 1);
+                if (to < 0 || to > last) return;
+                break;
+            case 'ArrowUp':
+            case 'ArrowDown': {
+                event.preventDefault();
+                let layout = this.#layout_of(st), cells = this.#cells(st, layout);
+                let next = step(groups[gi], cells.slice(groups[gi].first, groups[gi].last + 1),
+                    event.key == 'ArrowUp' ? 1 : -1);
+                if (!next) return;
+
+                cells.splice(groups[gi].first, next.length, ...next);
+                let was = input.value;
+                this.#reconcile(input, this.#stream(layout, cells), {});
+                this.#select(input, gi);
+                if (input.value !== was) {
+                    st.handled = true;
+                    input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText' }));
+                }
+                return;
+            }
+            default: return;
+        }
+
+        event.preventDefault();
+        this.#select(input, Math.max(0, Math.min(to, last)));
+    }
+
+    // Выделить группу gi целиком. Уход из группы, в которой набирали, - сначала дотянуть её
+    // до min; новая группа (или reset) начинает набор с пустого буфера
+    #select(input, gi, reset = true) {
+        let st = this.#states.get(input);
+        if (st.seg && st.seg.gi !== gi) this.#settle(input);
+        if (reset || st.seg?.gi !== gi) st.seg = { gi, buffer: '' };
+
+        let g = this.#layout_of(st).spans[gi];
+        if (document.activeElement === input) input.setSelectionRange(g.start, g.end);
+    }
+
+    // Группа набора - та, что выделена сейчас; сменилась (выделение поставили программно,
+    // а selectionchange ещё не пришёл) - буфер начинается заново
+    #seg(input, st) {
+        let { g } = this.#mode(st, input.selectionStart ?? 0, input.selectionEnd ?? 0);
+        let gi = this.#layout_of(st).spans.indexOf(g);
+        if (st.seg?.gi !== gi) {
+            this.#settle(input);
+            st.seg = { gi, buffer: '' };
+        }
+        return st.seg;
+    }
+
+    #settle(input) {
+        let st = this.#states.get(input), layout = this.#layout_of(st);
+        if (!st.seg?.buffer || !layout) return;
+
+        let g = layout.spans[st.seg.gi], cells = this.#cells(st, layout);
+        let part = cells.slice(g.first, g.last + 1), next = settle(g, part);
+        st.seg.buffer = '';
+        if (next === part) return;
+
+        cells.splice(g.first, next.length, ...next);
+        this.#reconcile(input, this.#stream(layout, cells), {});
+    }
+
+    // Фокус в поле с группами 'whole': Tab выделяет первую группу, Shift+Tab (фокус пришёл
+    // от следующего элемента) - последнюю. Клик дальше сам выделит группу под курсором
+    #enter(input, from) {
+        let st = this.#states.get(input), layout = this.#layout_of(st);
+        if (!layout || this.#mode(st, 0).edit != 'whole') return;
+
+        let back = from && input.compareDocumentPosition(from) & Node.DOCUMENT_POSITION_FOLLOWING;
+        this.#select(input, back ? layout.spans.length - 1 : 0);
+    }
+
+    #pin(input, clicked = false) {
         let st = this.#states.get(input);
         if (document.activeElement !== input || !st?.result) return;
 
         let start = input.selectionStart, end = input.selectionEnd;
         if (start == null) return;
 
+        let { g, edit } = this.#mode(st, start, end);
+
+        if (edit == 'whole') {
+            let gi = this.#layout_of(st).spans.indexOf(g);
+            if (!clicked && st.seg?.gi === gi && start == g.start && end == g.end) return;
+            return this.#select(input, gi, clicked || st.seg?.gi !== gi);
+        }
+
+        if (edit != 'end') return;
+
+        // Писать в середину нельзя - значит, и выделять её: частичное выделение расширяется
+        // до группы под кареткой (без групп - до всего значения)
         if (start !== end) {
-            if (start != 0 || end != input.value.length) input.setSelectionRange(0, input.value.length);
+            let [from, to] = g ? [g.start, g.end] : [0, input.value.length];
+            if ((start != 0 || end != input.value.length) && (start != from || end != to))
+                input.setSelectionRange(from, to);
             return;
         }
 
         if (start === st.caret) return;
 
-        let target = this.#tail_of(input, st, start);
+        let target = this.#tail_of(input, st, g);
         if (start !== target) input.setSelectionRange(target, target);
         st.caret = target;
     }
 
-    #tail_of(input, st, fmt) {
-        let def = st.def;
-
-        if (this.#params.placeholder == 'always' && def?.fixed && !this.#params.flow) {
-            let layout = def.layout ??= Mask.#layout(def);
-            let { slots, parts } = layout;
-            let k = slots.findIndex(slot => slot.fmt >= fmt);
-            if (k < 0) k = slots.length - 1;
-
-            let part = this.#anchor_at(layout, k, fmt) ?? parts[k];
-            let first = parts.indexOf(part), last = parts.lastIndexOf(part);
-            for (let i = first; i <= last; i++)
+    // Куда прижата каретка в режиме 'end': первая пустая ячейка начиная с группы (заполненная
+    // группа отдаёт набор дальше, а не перезаписывает соседнюю); без раскладки - конец набранного
+    #tail_of(input, st, g) {
+        if (g) {
+            let slots = this.#layout_of(st).slots;
+            for (let i = g.first; i < slots.length; i++)
                 if (st.result.cells?.[i] == null) return slots[i].fmt;
-
-            return slots[last].fmt + 1;
+            return slots.at(-1).fmt + 1;
         }
-
         return Math.min(st.result.stop_fmt, input.value.length);
     }
 
-    #anchor_at(layout, k, fmt) {
-        let { slots, parts } = layout;
-        return !this.#params.flow && k > 0 && k < slots.length
-            && parts[k] != parts[k - 1] && fmt == slots[k - 1].fmt + 1 ? parts[k - 1] : null;
+    // Раскладка фиксированной маски со скелетом: позиции слотов, блоки между разделителями
+    // и группы. Без placeholder: 'always' или у маски переменной длины раскладки нет
+    #layout_of(st) {
+        let def = st.def;
+        if (this.#params.placeholder != 'always' || !def?.fixed) return null;
+
+        let layout = def.layout ??= Mask.#layout(def);
+        layout.spans ??= spans(layout, this.#params);
+        return layout;
+    }
+
+    // Группа под выделением и её режим: выделенная целиком группа, иначе группа под началом.
+    // Позиция сразу за группой относится к ней ('12|.03' - ДД), так что каретка в конце
+    // группы её не покидает
+    #mode(st, start, end = start) {
+        let groups = this.#layout_of(st)?.spans ?? [];
+        let g = groups.find(g => start != end && g.start == start && g.end == end)
+            ?? groups.find(g => start <= g.end) ?? groups.at(-1) ?? null;
+        let edit = g ? g.opts.edit : this.#params.edit;
+        return { g, edit: edit == 'whole' && !g ? 'end' : edit };
+    }
+
+    #cells(st, layout) {
+        return layout.slots.map((_, i) => st.result?.cells?.[i] ?? null);
+    }
+
+    #stream(layout, cells) {
+        let last = cells.reduce((acc, cell, i) => cell != null ? i : acc, -1);
+        return cells.slice(0, last + 1).map((cell, i) => cell ?? layout.slots[i].fill).join('');
     }
 
     #stream_pos(units, fmt) {
@@ -450,7 +595,7 @@ export default class Mask {
         let st = this.#states.get(input);
         if (input.value === st.rendered) return;
 
-        st.run = null;
+        st.seg = null;
         let sel = input.selectionStart ?? input.value.length;
         this.#reconcile(input, input.value, { prefix: input.value.slice(0, sel) });
     }
@@ -467,6 +612,9 @@ export default class Mask {
             best = run_all(st.defs, result.stream.slice(0, cap(result, st.max_raw)), ctx);
             ({ result, def, mask_id } = best);
         }
+
+        if (!def.numeral && !in_range(def.names, { ...result.groups, null: result.raw }, this.#params))
+            result.complete = false;
 
         let text = this.#text_for(input, result);
 
@@ -519,7 +667,8 @@ export default class Mask {
             formatted: input.value,
             complete: st.result?.complete ?? false,
             mask_id: st.mask_id,
-            progress: st.result?.raw.length ?? 0
+            progress: st.result?.raw.length ?? 0,
+            groups: { ...st.result?.groups }
         };
     }
 
