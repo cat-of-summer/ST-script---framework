@@ -1127,6 +1127,20 @@ await test('Uploader.destroy: выбор файла снят, записи ос�
     await page.close();
 });
 
+await test('Toggle anchor: history.state роутера сохраняется', async () => {
+    let page = await open(`<button id="t" trigger target="#x">t</button><div id="x"></div>`, ['toggle']);
+    let result = await page.evaluate(async () => {
+        history.replaceState({ router: 1 }, '');
+        new Toggle({ trigger: '#t', anchor: true });
+        document.querySelector('#t').click();
+        await new Promise(r => setTimeout(r, 50));
+        let replaced = [location.hash, history.state];
+        return replaced;
+    });
+    eq(result, ['#t', { router: 1 }], 'хеш (id триггера) записан, состояние осталось');
+    await page.close();
+});
+
 await browser.close();
 
 console.log(`${passed} passed, ${failed} failed`);

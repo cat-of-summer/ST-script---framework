@@ -125,13 +125,15 @@ export default class Toggle {
         return targets.length === 1 && targets[0].id ? targets[0].id : null;
     }
 
+    // history.state сохраняется: его держат роутеры SPA (vue-router хранит в нём позицию
+    // и прокрутку), и затёртое состояние ломает им «назад».
     #writeHash(id) {
         let url = '#' + id;
         if (location.hash === url) return;
 
         this.#params.keep_history
-            ? history.pushState(null, '', url)
-            : history.replaceState(null, '', url);
+            ? history.pushState(history.state, '', url)
+            : history.replaceState(history.state, '', url);
     }
 
     #clearHash() {
@@ -139,8 +141,8 @@ export default class Toggle {
 
         let base = location.pathname + location.search;
         this.#params.keep_history
-            ? history.pushState(null, '', base)
-            : history.replaceState(null, '', base);
+            ? history.pushState(history.state, '', base)
+            : history.replaceState(history.state, '', base);
     }
 
     #applyHash() {
