@@ -1,4 +1,4 @@
-import { elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
+import { disown, elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
 
 
 export default class Toggle {
@@ -6,9 +6,11 @@ export default class Toggle {
     #params = {};
     #methods = {};
     #timers = new WeakMap();
+    #pending = new Set();
     #anchors = new Map();
     #triggers = [];
     #last = null;
+    #abort = new AbortController();
 
     static find = find;
 
@@ -63,6 +65,7 @@ export default class Toggle {
         this.before_init(this.#params);
 
         let init = el => el.hasAttribute('state') || el.setAttribute('state', 'inactive');
+        let signal = this.#abort.signal;
 
         for (let trigger of elements(this.#params.trigger)) {
             own(trigger, this);
@@ -79,19 +82,30 @@ export default class Toggle {
             if (id) this.#anchors.set(id, trigger);
 
             if (this.#params.action == 'hover') {
-                trigger.addEventListener('mouseenter', () => this.activate(trigger));
-                trigger.addEventListener('mouseleave', () => this.deactivate(trigger));
+                trigger.addEventListener('mouseenter', () => this.activate(trigger), { signal });
+                trigger.addEventListener('mouseleave', () => this.deactivate(trigger), { signal });
             } else
-                trigger.addEventListener(this.#params.action, () => this.toggle(trigger));
+                trigger.addEventListener(this.#params.action, () => this.toggle(trigger), { signal });
         }
 
         if (this.#params.anchor) {
             this.#applyHash();
             if (this.#params.keep_history)
-                window.addEventListener('hashchange', () => this.#applyHash());
+                window.addEventListener('hashchange', () => this.#applyHash(), { signal });
         }
 
         this.on_init(this.#params);
+    }
+
+    // Разобрать: снять обработчики (в том числе hashchange на window) и таймеры переходов.
+    // state на триггерах и целях остаётся как есть.
+    destroy() {
+        this.#abort.abort();
+        this.#pending.forEach(clearTimeout);
+        this.#pending.clear();
+        this.#triggers.forEach(trigger => disown(trigger, this, ['toggle', 'activate', 'deactivate']));
+        this.#triggers = [];
+        this.#anchors.clear();
     }
 
     #targets(trigger) {
@@ -146,10 +160,11 @@ export default class Toggle {
             els.forEach(el => el.setAttribute('state', process));
 
             requestAnimationFrame(() => {
-                let timer = setTimeout(
-                    () => els.forEach(el => (el.setAttribute('state', final), after(el))),
-                    this.#params.duration * 1000
-                );
+                let timer = setTimeout(() => {
+                    this.#pending.delete(timer);
+                    els.forEach(el => (el.setAttribute('state', final), after(el)));
+                }, this.#params.duration * 1000);
+                this.#pending.add(timer);
 
                 els.forEach(el => this.#timers.set(el, timer));
             });

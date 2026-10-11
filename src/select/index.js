@@ -1,4 +1,4 @@
-import { elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
+import { disown, elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
 
 
 export default class Select {
@@ -6,6 +6,9 @@ export default class Select {
     #params = {};
     #methods = {};
     #timers = new WeakMap();
+    // select → его контейнер и исходный style: для refresh() и destroy().
+    #built = new Map();
+    #abort = new AbortController();
 
     static find = find;
 
@@ -89,6 +92,8 @@ export default class Select {
             toggle: () => this.toggle(select)
         });
 
+        let signal = this.#abort.signal;
+
         let container = document.createElement('select-container');
         own(container, this);
         Object.assign(container.style, { position: 'relative', display: 'inline-block' });
@@ -102,6 +107,8 @@ export default class Select {
         Object.assign(options.style, { transition: `all ${this.#params.duration}s` });
         this.#locate(options);
 
+        this.#built.set(select, { container, style: select.getAttribute('style') });
+
         Object.assign(select.style, {
             position: 'absolute', width: '1px', height: '1px',
             overflow: 'hidden', clip: 'rect(0 0 0 0)', clipPath: 'inset(50%)',
@@ -110,6 +117,26 @@ export default class Select {
         select.parentNode.insertBefore(container, select);
         container.append(trigger, select, options);
         container.setAttribute('state', 'closed');
+
+        this.#items(container, select);
+        this.#render(select, trigger);
+
+        if (this.#params.action == 'hover') {
+            container.addEventListener('mouseenter', () => this.open(container), { signal });
+            container.addEventListener('mouseleave', () => this.close(container), { signal });
+        } else
+            trigger.addEventListener(this.#params.action, () => this.toggle(container), { signal });
+
+        if (this.#params.close_on_outside)
+            document.addEventListener('click', (e) => {
+                if (!e.composedPath().includes(container)) this.close(container);
+            }, { signal });
+    }
+
+    // Пункты списка — по <option> нативного select.
+    #items(container, select) {
+        let options = container.querySelector('select-options');
+        options.replaceChildren();
 
         for (let option of [...select.options]) {
             let item = document.createElement('select-option');
@@ -121,23 +148,41 @@ export default class Select {
 
             item.addEventListener('click', () => {
                 if (!option.disabled) this.#choose(container, select, option, item);
-            });
+            }, { signal: this.#abort.signal });
 
             options.append(item);
         }
+    }
 
-        this.#render(select, trigger);
+    // Пересобрать пункты и текст триггера по нативному select: после смены <option> или
+    // значения из кода (select.value = …, v-model). Без аргумента — все свои select.
+    refresh(target = [...this.#built.keys()]) {
+        for (let select of elements(target)) {
+            let built = this.#built.get(select);
+            if (!built) continue;
+            this.#items(built.container, select);
+            this.#render(select, built.container.querySelector('select-trigger'));
+        }
+        return this;
+    }
 
-        if (this.#params.action == 'hover') {
-            container.addEventListener('mouseenter', () => this.open(container));
-            container.addEventListener('mouseleave', () => this.close(container));
-        } else
-            trigger.addEventListener(this.#params.action, () => this.toggle(container));
+    // Разобрать: снять обработчики (в том числе клик мимо на document), вернуть select на
+    // место контейнера с прежними инлайн-стилями, убрать свою разметку.
+    destroy() {
+        this.#abort.abort();
 
-        if (this.#params.close_on_outside)
-            document.addEventListener('click', (e) => {
-                if (!e.composedPath().includes(container)) this.close(container);
-            });
+        for (let [select, { container, style }] of this.#built) {
+            clearTimeout(this.#timers.get(container));
+            container.parentNode?.insertBefore(select, container);
+            container.remove();
+
+            if (style == null) select.removeAttribute('style');
+            else select.setAttribute('style', style);
+
+            disown(select, this, ['open', 'close', 'toggle']);
+        }
+
+        this.#built.clear();
     }
 
     #choose(container, select, option, item) {

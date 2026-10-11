@@ -215,6 +215,16 @@ const base = new Toggle({ duration: 0.3, on_activate() { /* … */ } });
 const copy = base.clone({ trigger: '#sidebar [trigger]' });
 ```
 
+#### `destroy()`
+
+Разбирает экземпляр: снимает обработчики триггеров и `hashchange` на `window` (`keep_history`), таймеры переходов и методы `toggle`/`activate`/`deactivate` с триггеров. `state` на триггерах и целях остаётся как есть. Нужен, когда группа живёт меньше страницы — компонент SPA, который уходит со сменой маршрута: без `destroy()` слушатель `hashchange` каждого экземпляра остаётся на `window`.
+
+```js
+const tabs = new Toggle({ trigger: '#tabs [trigger]', group: 'radio', anchor: true, keep_history: true });
+// компонент снимается
+tabs.destroy();
+```
+
 ---
 
 ## 7. Статические методы

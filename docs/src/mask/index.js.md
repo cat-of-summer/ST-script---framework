@@ -187,6 +187,7 @@ new Mask({ target: 'input[name=sum]', edit: 'end', caret: 'hide', placeholder: '
 | `clear(target?)` | Очистить поле (по умолчанию — все) |
 | `set_mask(mask, target?)` | Заменить маску на лету (по умолчанию — всем полям) |
 | `clone(params)` | Копия экземпляра с переопределёнными параметрами |
+| `destroy()` | Разобрать: снять обработчики (в том числе `reset` на форме) и API с полей, вернуть `type` (`number`/`email`), `maxlength` и `caret-color`. Значение поля остаётся |
 | `get value` | Массив отформатированных значений всех привязанных полей |
 | `Mask.find(el)` | Экземпляр, владеющий элементом (`hasInstanceSymbol`) |
 | `import { run, build, … } from '…/_engine.js'` | Чистый движок без DOM (модуль `_engine.js`): `compile`, `build`, `run`, `run_all`, `render`, `caret_for`, `cap` — форматирование строк вне полей |

@@ -1,13 +1,25 @@
-import { find, own } from '../_traits/hasInstanceSymbol.js';
+import { disown, find, own } from '../_traits/hasInstanceSymbol.js';
 
 export default class Uploader {
     static find = find;
 
     #targets = [];
+    #pickers = [];
+    #abort = new AbortController();
 
     // Убрать все файлы из всех загрузчиков этого экземпляра.
     clear() {
         this.#targets.forEach(target => target.clear());
+    }
+
+    // Разобрать: снять обработчики и скрытое поле выбора файлов. Записи и поля с файлами
+    // остаются в разметке как есть.
+    destroy() {
+        this.#abort.abort();
+        this.#pickers.forEach(picker => picker.remove());
+        this.#targets.forEach(target => disown(target, this));
+        this.#pickers = [];
+        this.#targets = [];
     }
 
     static formatSize(size) {
@@ -70,6 +82,7 @@ export default class Uploader {
 
             own(target, this);
             this.#targets.push(target);
+            let signal = this.#abort.signal;
 
             // События на корне загрузчика, всплывают: uploader:add, uploader:delete, uploader:error.
             const emit = (name, detail, cancelable = false) => target.dispatchEvent(
@@ -155,7 +168,7 @@ export default class Uploader {
                 delete_button.forEach(b => b.addEventListener('click', () => {
                     if (target.before_file_delete(file) === false) return;
                     remove();
-                }));
+                }, { signal }));
 
                 let hidden = createFileInput();
 
@@ -208,7 +221,7 @@ export default class Uploader {
                     delete_button.forEach(b => b.addEventListener('click', () => {
                         if (target.before_file_delete(file) === false) return;
                         remove();
-                    }));
+                    }, { signal }));
 
                     input.remove();
                 } else
@@ -309,19 +322,19 @@ export default class Uploader {
                         target.before_drop();
                         wasDragOver = true;
                     }
-                }));
+                }, { signal }));
 
                 ['dragleave', 'drop'].forEach(event_name => zone.addEventListener(event_name, e => {
                     e.preventDefault();
                     zone.removeAttribute('dragover');
                     wasDragOver = false;
-                }));
+                }, { signal }));
 
                 zone.addEventListener('drop', e => {
                     e.preventDefault();
                     target.on_drop();
                     handleFiles(e.dataTransfer.files);
-                });
+                }, { signal });
             });
 
             let picker = createFileInput();
@@ -330,11 +343,12 @@ export default class Uploader {
             picker.addEventListener('change', () => {
                 handleFiles(picker.files);
                 picker.value = '';
-            });
+            }, { signal });
 
             target.appendChild(picker);
+            this.#pickers.push(picker);
 
-            target.querySelectorAll('*[add-button]').forEach(b => b.addEventListener('click', () => picker.click()));
+            target.querySelectorAll('*[add-button]').forEach(b => b.addEventListener('click', () => picker.click(), { signal }));
 
             target.on_init(params);
         });

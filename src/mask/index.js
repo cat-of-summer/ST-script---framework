@@ -1,4 +1,4 @@
-import { element, elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
+import { disown, element, elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
 import { build, run, run_all, render, caret_for, cap, prepare } from './_engine.js';
 import { spans, type_ahead, settle, step, in_range } from './_groups.js';
 
@@ -38,6 +38,7 @@ export default class Mask {
     #defs = null;
     #states = new WeakMap();
     #inputs = [];
+    #abort = new AbortController();
 
     static find = find;
 
@@ -110,6 +111,26 @@ export default class Mask {
 
     clear(target = this.#inputs) { this.set(target, ''); }
 
+    // Разобрать: снять обработчики (в том числе reset на форме) и вернуть полю то, что
+    // поменяла привязка: type (number/email), maxlength, caret-color. Значение остаётся.
+    destroy() {
+        this.#abort.abort();
+
+        for (let input of this.#inputs) {
+            let { original } = this.#states.get(input) ?? {};
+            if (original) {
+                if (input.type != original.type) input.type = original.type;
+                if (original.maxlength != null) input.setAttribute('maxlength', original.maxlength);
+                input.style.removeProperty('caret-color');
+                if (original.caret[0]) input.style.setProperty('caret-color', ...original.caret);
+            }
+            this.#states.delete(input);
+            disown(input, this, ['raw', 'state', 'set', 'clear', 'set_mask']);
+        }
+
+        this.#inputs = [];
+    }
+
     #only() {
         if (this.#inputs.length != 1)
             throw new Error(`Mask: маска привязана к ${this.#inputs.length} полям — укажите поле явно`);
@@ -151,6 +172,14 @@ export default class Mask {
         if (find(input)) throw new Error("Маска уже привязана к этому полю");
         own(input, this);
 
+        let signal = this.#abort.signal;
+        // Что поле теряет при привязке — destroy() вернёт.
+        let original = {
+            type: input.type,
+            maxlength: input.getAttribute('maxlength'),
+            caret: [input.style.getPropertyValue('caret-color'), input.style.getPropertyPriority('caret-color')],
+        };
+
         let coerced = null;
         if (this.#params.coerce_type !== false && (input.type == 'number' || input.type == 'email')) {
             coerced = input.type;
@@ -174,7 +203,7 @@ export default class Mask {
         }
 
         let numeric = coerced == 'number' || this.#params.numeral != null;
-        let st = { defs, def: null, stream: '', result: null, mask_id: null, rendered: '', seg: null, composing: false, handled: false, coerced, max_raw, numeric };
+        let st = { defs, def: null, stream: '', result: null, mask_id: null, rendered: '', seg: null, composing: false, handled: false, coerced, max_raw, numeric, original };
         this.#states.set(input, st);
         this.#inputs.push(input);
 
@@ -190,7 +219,7 @@ export default class Mask {
             && input.style.setProperty('caret-color', 'transparent', 'important');
         hide();
 
-        input.addEventListener('beforeinput', event => this.#before(input, event));
+        input.addEventListener('beforeinput', event => this.#before(input, event), { signal });
 
         let edits = [this.#params.edit, ...Object.values(this.#params.groups ?? {}).map(g => g?.edit)];
         if (edits.includes('whole') && (this.#params.placeholder != 'always' || defs.some(d => !d.fixed && !d.fn)))
@@ -199,8 +228,8 @@ export default class Mask {
         if (edits.some(edit => edit && edit != 'free')) {
             let pin = event => this.#pin(input, event.type == 'click');
             for (let event of ['selectionchange', 'click', 'keyup', 'select'])
-                input.addEventListener(event, pin);
-            input.addEventListener('keydown', event => this.#key(input, event));
+                input.addEventListener(event, pin, { signal });
+            input.addEventListener('keydown', event => this.#key(input, event), { signal });
         }
 
         let refresh = () => {
@@ -208,24 +237,24 @@ export default class Mask {
             if (st.composing) return;
             this.#refresh(input);
         };
-        input.addEventListener('input', refresh);
-        input.addEventListener('change', refresh);
+        input.addEventListener('input', refresh, { signal });
+        input.addEventListener('change', refresh, { signal });
 
-        input.addEventListener('compositionstart', () => st.composing = true);
-        input.addEventListener('compositionend', () => { st.composing = false; this.#refresh(input); });
+        input.addEventListener('compositionstart', () => st.composing = true, { signal });
+        input.addEventListener('compositionend', () => { st.composing = false; this.#refresh(input); }, { signal });
 
         input.addEventListener('focus', event => {
             hide();
             this.#reconcile(input, st.stream, { prefix: st.stream, silent: true });
             this.#enter(input, event.relatedTarget);
-        });
+        }, { signal });
         input.addEventListener('blur', () => {
             this.#settle(input);
             st.seg = null;
             this.#reconcile(input, st.stream, { silent: true });
-        });
+        }, { signal });
 
-        input.closest('form')?.addEventListener('reset', () => queueMicrotask(() => this.#refresh(input)));
+        input.closest('form')?.addEventListener('reset', () => queueMicrotask(() => this.#refresh(input)), { signal });
 
         this.#reconcile(input, input.value, { silent: true });
     }

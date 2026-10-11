@@ -1,4 +1,4 @@
-import { elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
+import { disown, elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
 
 export default class Validator {
 
@@ -7,6 +7,7 @@ export default class Validator {
     #params = {};
     #methods = {};
     #elements = [];
+    #abort = new AbortController();
 
     static find = find;
 
@@ -84,16 +85,32 @@ export default class Validator {
             reset: () => this.reset(el)
         });
 
+        let signal = this.#abort.signal;
+
         for (let event of this.#params.events)
-            el.addEventListener(event, () => this.#check(el));
+            el.addEventListener(event, () => this.#check(el), { signal });
 
         // Попытка отправить форму: браузер шлёт invalid каждому невалидному полю.
-        el.addEventListener('invalid', () => this.#check(el));
+        el.addEventListener('invalid', () => this.#check(el), { signal });
 
         (el.form ?? el.closest('form'))
-            ?.addEventListener('reset', () => queueMicrotask(() => this.reset(el)));
+            ?.addEventListener('reset', () => queueMicrotask(() => this.reset(el)), { signal });
 
         this.#sync(el);
+    }
+
+    // Разобрать: снять обработчики (в том числе reset на форме), state и customValidity
+    // со своих полей. На поле после этого можно поднять новый Validator.
+    destroy() {
+        this.#abort.abort();
+
+        for (let el of this.#elements) {
+            el.removeAttribute('state');
+            if (this.#native(el)) el.setCustomValidity('');
+            disown(el, this, ['check', 'reset']);
+        }
+
+        this.#elements = [];
     }
 
     #check(el) {

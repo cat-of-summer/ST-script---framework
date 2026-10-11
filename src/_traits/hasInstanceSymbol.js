@@ -50,6 +50,22 @@ export const expose = (el, api) => {
     return el;
 };
 
+// Обратное own + expose для destroy(): снять владельца (только если это inst) и опубликованные
+// им методы. Чужие методы на том же элементе (Mask и Validator на одном поле) остаются.
+export const disown = (el, inst, names = []) => {
+    if (!el) return el;
+    if (el[instance] === inst) delete el[instance];
+
+    let published = el[exposed];
+    for (let name of names) {
+        if (!published?.has(name)) continue;
+        delete el[name];
+        published.delete(name);
+    }
+
+    return el;
+};
+
 // Ближайший к цели элемент события, подходящий под селектор. Путь берётся из composedPath():
 // он зафиксирован при отправке, а e.target к всплытию может быть уже вынут из DOM перерисовкой
 // (App обновляет шаблон в микрозадаче между слушателями). root — граница поиска, включительно.

@@ -1,4 +1,4 @@
-// Браузерные автотесты App, Modal, Uploader, Core, Cookie и Route: node tests/browser.test.mjs
+// Браузерные автотесты App, Modal, Uploader, Core, Cookie, Route и destroy() модулей: node tests/browser.test.mjs
 // Нужен Playwright с Chromium: стоит не в репозитории — путь к нему в PLAYWRIGHT_FROM (README, раздел Tests).
 // Модули грузятся из dist/ (IIFE-сборки), поэтому перед прогоном нужен npm run build.
 // Страницы отдаются через page.route с фиктивного origin: History API и cookie работают.
@@ -979,6 +979,151 @@ await test('Mask free: набор без групп не изменился', as
     await page.keyboard.type('9');
     eq((await field(page))[0], '12.03.Г9ГГ', 'клик в середину ГГГГ пишет поверх ячейки');
     eq(page.errors, [], 'без ошибок и предупреждений');
+    await page.close();
+});
+
+// ---------------------------------------------------------------------------
+// destroy() и Select.refresh(): компоненты, которые живут меньше страницы (SPA)
+// ---------------------------------------------------------------------------
+
+// Слушатели на document/window считаются подменой addEventListener до загрузки модулей:
+// снятый через AbortSignal слушатель больше не вызывается, а по счётчику видно, что
+// повторные экземпляры не копятся.
+const SPY = `<script>window.calls = { document: 0, window: 0 };
+for (let [name, target] of [['document', document], ['window', window]]) {
+    let add = target.addEventListener.bind(target);
+    target.addEventListener = (type, fn, opts) => add(type, (...a) => { if (!opts?.signal?.aborted) window.calls[name]++; return fn(...a); }, opts);
+}</script>`;
+
+await test('Modal.destroy: контент на место, окно убрано, прокрутка возвращена', async () => {
+    let page = await open(`<div style="height:3000px"><main id="home"><p id="before"></p><div id="m">окно</div><p id="after"></p></main></div>`, ['modal']);
+    await page.evaluate(() => window.scrollTo(0, 500));
+    let result = await page.evaluate(async () => {
+        let modal = new Modal({ content: '#m', duration: 0 });
+        let waiting = modal.open();
+        await until(() => modal.state == 'shown');
+        let locked = document.body.style.position;
+        modal.destroy();
+        return {
+            locked,
+            position: document.body.style.position,
+            scroll: window.scrollY,
+            order: [...document.querySelector('#home').children].map(el => el.id),
+            modals: document.querySelectorAll('modal').length,
+            owner: Modal.find('#m') === undefined,
+            result: await waiting,
+        };
+    });
+    eq(result, { locked: 'fixed', position: '', scroll: 500, order: ['before', 'm', 'after'], modals: 0, owner: true, result: null },
+        'контент вернулся между соседями, окна нет, body и прокрутка как до показа, open() получил null');
+    eq(page.errors, [], 'без ошибок');
+    await page.close();
+});
+
+await test('Modal.destroy: триггеры и Esc больше не открывают окно', async () => {
+    let page = await open(`<button id="t">open</button><div id="m">окно</div>`, ['modal']);
+    let state = await page.evaluate(async () => {
+        let modal = new Modal({ content: '#m', trigger: '#t', duration: 0 });
+        modal.destroy();
+        document.querySelector('#t').click();
+        await new Promise(r => setTimeout(r, 50));
+        return [modal.state, document.querySelectorAll('modal').length];
+    });
+    eq(state, ['hidden', 0], 'клик по триггеру после destroy ничего не делает');
+    await page.close();
+});
+
+await test('Select.destroy: select на месте, document-слушатель снят, можно поднять заново', async () => {
+    let page = await open(`${SPY}<form id="f"><select id="s" style="color: red"><option>a</option><option>b</option></select></form>`, ['select']);
+    let result = await page.evaluate(() => {
+        for (let i = 0; i < 3; i++) new Select({ target: '#s' }).destroy();
+        let select = document.querySelector('#s');
+        let before = { parent: select.parentElement.id, style: select.getAttribute('style'), containers: document.querySelectorAll('select-container').length };
+        window.calls.document = 0;
+        document.body.click();
+        let after = window.calls.document;
+        new Select({ target: '#s' });
+        return { before, after, again: document.querySelectorAll('select-container').length, open: typeof select.open };
+    });
+    eq(result, { before: { parent: 'f', style: 'color: red', containers: 0 }, after: 0, again: 1, open: 'function' },
+        'разметка и style вернулись, клик мимо не доходит до разобранных, повторный Select поднимается');
+    eq(page.errors, [], 'без ошибок');
+    await page.close();
+});
+
+await test('Select.refresh: пункты и триггер по новым option и значению', async () => {
+    let page = await open(`<select id="s"><option value="1">один</option><option value="2">два</option></select>`, ['select']);
+    let result = await page.evaluate(() => {
+        let select = new Select({ target: '#s' });
+        let el = document.querySelector('#s');
+        el.add(new Option('три', '3'));
+        el.value = '3';
+        select.refresh();
+        return {
+            items: [...document.querySelectorAll('select-option')].map(o => o.textContent + (o.hasAttribute('selected') ? '*' : '')),
+            trigger: document.querySelector('select-trigger').textContent,
+        };
+    });
+    eq(result, { items: ['один', 'два', 'три*'], trigger: 'три' }, 'пункты пересобраны, выбран новый');
+    await page.close();
+});
+
+await test('Toggle.destroy: hashchange и клики сняты', async () => {
+    let page = await open(`${SPY}<button id="t" trigger target="#x">t</button><div id="x"></div>`, ['toggle']);
+    let result = await page.evaluate(async () => {
+        let toggle = new Toggle({ trigger: '#t', anchor: true, keep_history: true });
+        toggle.destroy();
+        window.calls.window = 0;
+        location.hash = '#x';
+        await new Promise(r => setTimeout(r, 50));
+        document.querySelector('#t').click();
+        await new Promise(r => setTimeout(r, 50));
+        return { hashchange: window.calls.window, state: document.querySelector('#t').getAttribute('state'), api: typeof document.querySelector('#t').toggle };
+    });
+    eq(result, { hashchange: 0, state: 'inactive', api: 'undefined' }, 'после destroy нет реакции на hash и клик, методы с триггера сняты');
+    await page.close();
+});
+
+await test('Validator.destroy и Mask.destroy: поле как до привязки', async () => {
+    let page = await open(`<form id="f"><input id="i" type="number" maxlength="4" required></form>`, ['mask', 'validator']);
+    let result = await page.evaluate(() => {
+        let input = document.querySelector('#i');
+        let mask = new Mask({ target: input, mask: '0000' });
+        let validator = new Validator({ target: input });
+        validator.check();
+        let bound = { type: input.type, maxlength: input.getAttribute('maxlength'), state: input.getAttribute('state') };
+        validator.destroy();
+        mask.destroy();
+        input.dispatchEvent(new Event('blur'));
+        return {
+            bound,
+            type: input.type,
+            maxlength: input.getAttribute('maxlength'),
+            state: input.getAttribute('state'),
+            api: [typeof input.raw, typeof input.check],
+            rebind: (() => { new Mask({ target: input, mask: '00' }); new Validator({ target: input }); return true; })(),
+        };
+    });
+    eq(result, {
+        bound: { type: 'text', maxlength: null, state: 'invalid' },
+        type: 'number', maxlength: '4', state: null, api: ['undefined', 'undefined'], rebind: true,
+    }, 'type, maxlength и state вернулись, методы сняты, привязать можно заново');
+    await page.close();
+});
+
+await test('Uploader.destroy: выбор файла снят, записи остались', async () => {
+    let page = await open(`<div id="u"><div files-list><div file-item><span filename>a.pdf</span><input type="hidden" name="docs" value="1"><button type="button" delete-button>x</button></div></div><button type="button" add-button>+</button></div>`, ['uploader']);
+    let result = await page.evaluate(() => {
+        let uploader = new Uploader({ target: '#u', input_name: 'docs', entry: '[files-list] [file-item]' });
+        uploader.destroy();
+        document.querySelector('[delete-button]').click();
+        return {
+            pickers: document.querySelectorAll('#u > input[type=file]').length,
+            items: document.querySelectorAll('[file-item]').length,
+            owner: Uploader.find('#u') === undefined,
+        };
+    });
+    eq(result, { pickers: 0, items: 1, owner: true }, 'поле выбора убрано, удаление больше не срабатывает');
     await page.close();
 });
 

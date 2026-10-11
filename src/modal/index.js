@@ -1,4 +1,4 @@
-import { closestInPath, element, find, own } from '../_traits/hasInstanceSymbol.js';
+import { closestInPath, disown, element, find, own } from '../_traits/hasInstanceSymbol.js';
 
 export default class Modal {
     modal;
@@ -19,6 +19,12 @@ export default class Modal {
     // Куда идёт окно. Меняется синхронно, а state — только в requestAnimationFrame,
     // поэтому show() сразу после hide() видит закрытие по #target.
     #target = 'hidden';
+    // destroy(): подписки окна, таймеры и блокировка прокрутки из замыкания конструктора,
+    // место контента в документе до переноса в окно.
+    #abort = new AbortController();
+    #teardown = null;
+    #home = null;
+    #destroyed = false;
 
     static find = find;
 
@@ -107,6 +113,7 @@ export default class Modal {
         let timeout;
         let body_inline_styles;
         let default_scroll_behavior;
+        let locked = false;
 
         for (let [key, value] of Object.entries(params))
             if (typeof value == "function") {
@@ -184,11 +191,13 @@ export default class Modal {
 
         this.modal.append(this.area);
 
+        const signal = this.#abort.signal;
+
         if (this.#params.close_by_overlay)
             this.area.addEventListener('click', (e) => {
                 // composedPath, а не e.target: перерисовка могла вынуть цель из контейнера до всплытия.
                 if (!e.composedPath().includes(this.container)) this.hide(e);
-            });
+            }, { signal });
 
         this.container = document.createElement('modal-container');
         own(this.container, this);
@@ -217,6 +226,14 @@ export default class Modal {
             throw new Error("Неудачная попытка вставить переданный контент в модальное окно");
         }
 
+        // Контент из документа destroy() вернёт на прежнее место.
+        if (this.content.parentNode)
+            this.#home = {
+                parent: this.content.parentNode,
+                next: this.content.nextSibling,
+                transition: this.content.style.transition,
+            };
+
         this.container.append(this.content);
         own(this.content, this);
         this.content.style.transition = 'inherit';
@@ -224,7 +241,7 @@ export default class Modal {
         // Делегирование: кнопки, появившиеся или пересозданные позже (App, innerHTML), тоже работают.
         this.content.addEventListener('click', e => {
             if (closestInPath(e, '[action="close"]', this.content)) this.hide();
-        });
+        }, { signal });
 
         let toggle = (params) => {
             params.before_func(params.data);
@@ -298,7 +315,10 @@ export default class Modal {
                     data
                 });
 
-                if (this.#params.overlay_scroll_lock && this.overlay && this.#params.blocking) {
+                // Уже заблокировано (show() прервал закрытие) — второй раз не снимаем стили:
+                // запомнились бы зафиксированные, и прокрутка не вернулась бы.
+                if (this.#params.overlay_scroll_lock && this.overlay && this.#params.blocking && !locked) {
+                    locked = true;
                     default_scroll_behavior = document.documentElement.style.scrollBehavior;
 
                     body_inline_styles = document.body.style;
@@ -358,17 +378,27 @@ export default class Modal {
 
                 clearTimeout(timeout);
 
-                timeout = setTimeout(() => {
-                    if (body_inline_styles) {
-                        Object.assign(document.body.style, body_inline_styles);
-                        window.scrollTo(body_inline_styles.scroll_X, body_inline_styles.scroll_Y);
-                    }
-
-                    if (default_scroll_behavior != null)
-                        document.documentElement.style.scrollBehavior = default_scroll_behavior;
-                    
-                }, this.#params.duration * 1000);
+                timeout = setTimeout(unlock, this.#params.duration * 1000);
             }
+        };
+
+        // Снять блокировку прокрутки: вернуть стили body и позицию страницы.
+        let unlock = () => {
+            if (!locked) return;
+            locked = false;
+
+            if (body_inline_styles) {
+                Object.assign(document.body.style, body_inline_styles);
+                window.scrollTo(body_inline_styles.scroll_X, body_inline_styles.scroll_Y);
+            }
+
+            if (default_scroll_behavior != null)
+                document.documentElement.style.scrollBehavior = default_scroll_behavior;
+        };
+
+        this.#teardown = () => {
+            clearTimeout(timeout);
+            unlock();
         };
 
         if (this.#params.close_by_esc)
@@ -376,10 +406,34 @@ export default class Modal {
 
         if (this.#params.trigger)
             document.querySelectorAll(this.#params.trigger).forEach(trigger => {
-                trigger.addEventListener('click', () => this.show(trigger));
+                trigger.addEventListener('click', () => this.show(trigger), { signal });
             });
-        
+
         this.on_init(this.#params);
+    }
+
+    // Разобрать окно: снять обработчики и таймеры, вернуть прокрутку страницы, если окно её
+    // заблокировало, контент — на место в документе, откуда его взяли; разметку окна убрать.
+    // Ждущие open() получают null. Нужен, когда контент живёт меньше страницы: компонент
+    // SPA, который уходит со сменой маршрута.
+    destroy() {
+        if (this.#destroyed) return;
+        this.#destroyed = true;
+
+        this.#abort.abort();
+        this.#teardown?.();
+        Modal.#open = Modal.#open.filter(modal => modal !== this);
+        this.#pending_show = null;
+        [...this.#resolvers.splice(0), ...this.#waiting.splice(0)].forEach(resolve => resolve(null));
+
+        disown(this.content, this);
+        if (this.#home) {
+            this.content.style.transition = this.#home.transition;
+            let { parent, next } = this.#home;
+            parent.insertBefore(this.content, next?.parentNode === parent ? next : null);
+        }
+
+        this.modal.remove();
     }
 
     // Фокус возвращается, только если он остался в окне или ушёл на body: пользователь,
