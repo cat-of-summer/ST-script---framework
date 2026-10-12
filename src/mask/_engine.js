@@ -212,6 +212,12 @@ function stop(s) {
     if (s.stop_fmt < 0) s.stop_fmt = s.formatted.length + s.tail.length;
 }
 
+// Символ входа отброшен: не подошёл узлу, на котором стоит разбор. slot - номер слота, если отказал слот
+function skip(s, slot = null) {
+    s.rejected.push({ at: s.ip, slot });
+    s.ip++;
+}
+
 function exhaust(s) {
     s.complete = false;
     s.done = true;
@@ -262,7 +268,7 @@ function walk(nodes, s, def) {
                     if (def.before_slot && !no_fix) {
                         let out = def.before_slot(s.ctx?.input,
                             { char: c, slot: ordinal, cells: s.cells, raw: s.raw, node });
-                        if (out === false) { s.ip++; continue; }
+                        if (out === false) { skip(s, ordinal); continue; }
                         if (typeof out == 'string' && out !== c) {
                             s.input.splice(s.ip, 1, ...out);
                             no_fix = true;
@@ -270,10 +276,10 @@ function walk(nodes, s, def) {
                         }
                     }
                     accept(s, c, c, 'char', ordinal, group);
-                } else if (c === fill) {
+                } else if (c === fill && s.ctx?.holes !== false) {
                     s.complete = false;
                     accept(s, c, c, 'hole', ordinal, group);
-                } else { s.ip++; continue; }
+                } else { skip(s, ordinal); continue; }
                 s.ip++;
                 s.consumed++;
                 break;
@@ -291,7 +297,7 @@ function walk(nodes, s, def) {
                     s.ip += node.to.length, s.consumed += node.to.length;
                 else if (s.input[s.ip] === node.from)
                     s.ip++, s.consumed++;
-                else { s.ip++; continue; }
+                else { skip(s); continue; }
                 if (!s.diverged) s.lead++;
                 accept(s, node.to, node.to);
                 break;
@@ -313,7 +319,7 @@ function walk(nodes, s, def) {
                 }
                 if (!consumes(node.children, s.input[s.ip], s)) {
                     if (!node.greedy && count >= node.min) break;
-                    s.ip++;
+                    skip(s);
                     continue;
                 }
                 let before = s.ip;
@@ -337,7 +343,7 @@ function walk(nodes, s, def) {
                     break;
                 }
                 if (consumes(rest, c, s)) break;
-                s.ip++;
+                skip(s);
             }
             if (!entered && s.ip >= s.input.length) stop(s);
         }
@@ -418,18 +424,36 @@ export function run(def, input_string, ctx) {
         ph_slots: [], units: [], cells: [],
         groups: Object.fromEntries((def.names ?? []).map(name => [name, ''])), local: {},
         consumed: 0, lead: 0, diverged: false, ordinal: 0,
-        complete: true, done: false, stop_fmt: -1
+        complete: true, done: false, stop_fmt: -1, rejected: []
     };
 
     walk(def.nodes, s, def);
     if (s.stop_fmt < 0) s.stop_fmt = s.formatted.length;
     if (def.valid) s.complete = s.complete && def.valid.test(s.raw);
 
+    // Почему отброшен символ: 'full' - шаблон кончился раньше ввода, 'literal' - разделитель
+    // шаблона не на своём месте (пробел, дефис), 'slot' - не подошёл позиции
+    let seps = def.seps ??= separators(def.nodes);
+    let rejected = s.rejected.map(({ at, slot }) =>
+        ({ at, char: s.input[at], slot, reason: seps.has(s.input[at]) ? 'literal' : 'slot' }));
+    for (let at = s.ip; at < s.input.length; at++)
+        rejected.push({ at, char: s.input[at], slot: null, reason: 'full' });
+
     return {
         stream: s.stream, raw: s.raw, formatted: s.formatted, tail: s.tail,
         ph: s.ph, ph_slots: s.ph_slots, complete: s.complete, consumed: s.consumed,
-        lead: s.lead, units: s.units, cells: s.cells, groups: s.groups, stop_fmt: s.stop_fmt
+        lead: s.lead, units: s.units, cells: s.cells, groups: s.groups, stop_fmt: s.stop_fmt,
+        rejected
     };
+}
+
+// Разделители шаблона - литералы, не входящие в код маски (SIGNIFICANT)
+function separators(nodes, set = new Set()) {
+    for (let node of nodes) {
+        if (node.type == 'literal' && !SIGNIFICANT.test(node.char)) set.add(node.char);
+        if (node.children) separators(node.children, set);
+    }
+    return set;
 }
 
 export function run_all(defs, input_string, ctx = {}) {

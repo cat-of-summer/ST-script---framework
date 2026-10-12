@@ -3,7 +3,8 @@ import { build, run, run_all, render, caret_for, cap, prepare } from './_engine.
 import { spans, type_ahead, settle, step, in_range } from './_groups.js';
 
 const CALLBACKS = ['before_init', 'on_init', 'before_char', 'before_slot', 'before_input',
-    'on_input', 'before_paste', 'on_paste', 'on_accept', 'on_complete', 'on_incomplete', 'on_mask_change'];
+    'on_input', 'before_paste', 'on_paste', 'on_accept', 'on_complete', 'on_incomplete', 'on_mask_change',
+    'on_reject'];
 
 export default class Mask {
 
@@ -105,8 +106,11 @@ export default class Mask {
         if (arguments.length < 2) [target, value] = [this.#only(), target];
 
         for (let input of elements(target))
-            if (this.#states.has(input))
+            if (this.#states.has(input)) {
+                let was = input.value;
                 this.#reconcile(input, String(value ?? ''), { prefix: String(value ?? '') });
+                this.#emit(input, was, 'insertReplacementText');
+            }
     }
 
     clear(target = this.#inputs) { this.set(target, ''); }
@@ -147,8 +151,18 @@ export default class Mask {
             if (!st) continue;
             st.defs = defs;
             st.seg = null;
+            let was = input.value;
             this.#reconcile(input, st.stream, {});
+            this.#emit(input, was, 'insertReplacementText');
         }
+    }
+
+    // Правка поменяла значение - всплывающий input для внешних слушателей (свой слушатель его
+    // пропускает по handled: значение уже приведено)
+    #emit(input, was, inputType, data = null) {
+        if (input.value === was) return;
+        this.#states.get(input).handled = true;
+        input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType, data }));
     }
 
     #base() {
@@ -222,8 +236,8 @@ export default class Mask {
         input.addEventListener('beforeinput', event => this.#before(input, event), { signal });
 
         let edits = [this.#params.edit, ...Object.values(this.#params.groups ?? {}).map(g => g?.edit)];
-        if (edits.includes('whole') && (this.#params.placeholder != 'always' || defs.some(d => !d.fixed && !d.fn)))
-            console.warn("Mask: edit: 'whole' работает с фиксированной маской и placeholder: 'always' - иначе ведёт себя как 'end'", input);
+        if (edits.includes('whole') && (this.#params.placeholder != 'always' || defs.length > 1 || defs.some(d => !d.fixed && !d.fn)))
+            console.warn("Mask: edit: 'whole' работает с одной фиксированной маской и placeholder: 'always' - иначе ведёт себя как 'end'", input);
 
         if (edits.some(edit => edit && edit != 'free')) {
             let pin = event => this.#pin(input, event.type == 'click');
@@ -278,10 +292,9 @@ export default class Mask {
             start = end = this.#tail_of(input, st, g);
 
         event.preventDefault();
-        st.handled = true;
 
         let is_delete = type.startsWith('delete');
-        let insert = '';
+        let insert = '', rejected = [];
 
         if (!is_delete) {
             if (type == 'insertLineBreak' || type == 'insertParagraph') return;
@@ -294,8 +307,11 @@ export default class Mask {
             }
 
             if (st.numeric) {
-                let sign = st.defs.some(d => d.numeral?.sign);
-                insert = [...insert].filter(c => c >= '0' && c <= '9' || sign && c == '-').join('');
+                let sign = st.defs.some(d => d.numeral?.sign), digits = '';
+                for (let char of insert)
+                    if (char >= '0' && char <= '9' || sign && char == '-') digits += char;
+                    else rejected.push({ char, slot: null, reason: 'slot' });
+                insert = digits;
             }
         }
 
@@ -303,14 +319,34 @@ export default class Mask {
 
         let was = input.value;
 
-        if (edit == 'whole') this.#segment(input, type, is_delete ? '' : insert);
-        else if (this.#layout_of(st)) this.#grid(input, type, start, end, is_delete ? '' : insert);
-        else this.#edit(input, start, end, is_delete ? '' : insert, type);
+        if (edit == 'whole') rejected.push(...this.#segment(input, type, is_delete ? '' : insert));
+        else if (this.#layout_of(st)) rejected.push(...this.#grid(input, type, start, end, is_delete ? '' : insert));
+        else rejected.push(...this.#edit(input, start, end, is_delete ? '' : insert, type));
 
         if (type == 'insertFromPaste') this.on_paste(input, this.#state_of(input, st));
 
-        if (event.defaultPrevented && input.value !== was)
-            input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: type, data: insert || null }));
+        for (let r of rejected) this.on_reject(input, { ...r, type });
+
+        if (event.defaultPrevented) this.#emit(input, was, type, insert || null);
+    }
+
+    // Какие из вставленных символов маска не приняла. Отказы движка - в координатах всего
+    // разобранного потока, вставка в нём - от длины разобранного префикса. Если поток срезан
+    // по max_raw, принятые символы вставки за срезом тоже отказ ('full')
+    #rejected(input, { def, full, cut }, before, insert) {
+        let ctx = { input };
+        let from = prepare(def, before, ctx).length, chars = prepare(def, insert, ctx);
+        let to = from + chars.length;
+
+        let list = (full.rejected ?? []).filter(r => r.at >= from && r.at < to);
+        if (cut != null) {
+            let kept = Math.max(0, cut - run(def, before, ctx).stream.length);
+            let accepted = chars.map((_, i) => from + i).filter(at => !list.some(r => r.at == at));
+            for (let at of accepted.slice(kept))
+                list.push({ at, char: chars[at - from], slot: null, reason: 'full' });
+            list.sort((a, b) => a.at - b.at);
+        }
+        return list.map(({ char, slot, reason }) => ({ char, slot, reason }));
     }
 
     #edit(input, fmt_start, fmt_end, insert, type) {
@@ -334,13 +370,14 @@ export default class Mask {
                     if (u.fmt_start < fmt_start) u.kind == 'literal' ? literal = u : unit = u;
                 unit ??= literal;
             }
-            if (!unit) return;
+            if (!unit) return [];
             del_start = unit.stream_start;
             del_end = unit.stream_end;
         }
 
-        let prefix = st.stream.slice(0, del_start) + insert;
-        this.#reconcile(input, prefix + st.stream.slice(del_end), { prefix });
+        let before = st.stream.slice(0, del_start), prefix = before + insert;
+        let out = this.#reconcile(input, prefix + st.stream.slice(del_end), { prefix });
+        return insert && out ? this.#rejected(input, out, before, insert) : [];
     }
 
     #grid(input, type, fmt_start, fmt_end, insert) {
@@ -361,12 +398,12 @@ export default class Mask {
             if (type.includes('Forward')) {
                 k = at(fmt_start);
                 while (k < n && cells[k] == null) k++;
-                if (k >= n) return;
+                if (k >= n) return [];
             } else {
                 k = -1;
                 for (let i = 0; i < n; i++) if (slots[i].fmt < fmt_start) k = i;
                 while (k >= 0 && cells[k] == null) k--;
-                if (k < 0) return;
+                if (k < 0) return [];
             }
             cells[k] = null;
         } else {
@@ -374,13 +411,18 @@ export default class Mask {
             if (k >= n && (k = cells.indexOf(null)) < 0) k = n;
         }
 
+        let rejected = [];
         for (let c of prepare(def, insert, { input })) {
-            if (k >= n) break;
+            if (k >= n) {
+                rejected.push({ char: c, slot: null, reason: 'full' });
+                continue;
+            }
 
             if (!slots[k].node.test.test(c)) {
                 // Разделитель следующего блока переводит набор в этот блок
                 let end = parts.lastIndexOf(parts[k]);
                 if (end + 1 < n && gap(end + 1).includes(c)) k = end + 1;
+                else rejected.push(Mask.#refusal(def, c, k));
                 continue;
             }
 
@@ -390,6 +432,12 @@ export default class Mask {
         let stream = this.#stream(layout, cells);
         let pos = Math.min(run(def, stream.slice(0, k), { input }).stream.length, n);
         this.#reconcile(input, stream, { caret_fmt: pos < n ? slots[pos].fmt : slots[n - 1].fmt + 1 });
+        return rejected;
+    }
+
+    // Отказ слота: разделитель шаблона не на своём месте - 'literal', прочее - 'slot'
+    static #refusal(def, char, slot) {
+        return { char, slot, reason: def.seps?.has(char) ? 'literal' : 'slot' };
     }
 
     // edit: 'whole' - набор в выделенную группу как в <input type=date>: буфер группы
@@ -401,12 +449,12 @@ export default class Mask {
         let cells = this.#cells(st, layout);
         let part = g => cells.slice(g.first, g.last + 1);
         let put = (g, values) => cells.splice(g.first, values.length, ...values);
-        let g = groups[seg.gi];
+        let g = groups[seg.gi], rejected = [];
 
         if (type.startsWith('delete')) {
             if (part(g).every(cell => cell == null)) {
                 if (type.includes('Backward') && seg.gi > 0) this.#select(input, seg.gi - 1);
-                return;
+                return [];
             }
             put(g, part(g).fill(null));
             seg.buffer = '';
@@ -426,8 +474,11 @@ export default class Mask {
                     continue;
                 }
 
-                let slot = layout.slots[g.first + Math.min(seg.buffer.length, g.fmts.length - 1)];
-                if (!slot.node.test.test(c)) continue;
+                let i = g.first + Math.min(seg.buffer.length, g.fmts.length - 1);
+                if (!layout.slots[i].node.test.test(c)) {
+                    rejected.push(Mask.#refusal(st.def, c, i));
+                    continue;
+                }
 
                 let typed = type_ahead(g, seg.buffer, c);
                 put(g, typed.cells);
@@ -443,6 +494,7 @@ export default class Mask {
 
         this.#reconcile(input, this.#stream(layout, cells), {});
         this.#select(input, seg.gi, false);
+        return rejected;
     }
 
     // Клавиши режима 'whole': ←/→, Home/End и Tab/Shift+Tab ходят по группам (Tab с крайней
@@ -478,10 +530,7 @@ export default class Mask {
                 let was = input.value;
                 this.#reconcile(input, this.#stream(layout, cells), {});
                 this.#select(input, gi);
-                if (input.value !== was) {
-                    st.handled = true;
-                    input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText' }));
-                }
+                this.#emit(input, was, 'insertReplacementText');
                 return;
             }
             default: return;
@@ -583,10 +632,11 @@ export default class Mask {
     }
 
     // Раскладка фиксированной маски со скелетом: позиции слотов, блоки между разделителями
-    // и группы. Без placeholder: 'always' или у маски переменной длины раскладки нет
+    // и группы. Без placeholder: 'always', у маски переменной длины и у нескольких масок
+    // раскладки нет: ячейки одного шаблона не дали бы набору перейти в другой
     #layout_of(st) {
         let def = st.def;
-        if (this.#params.placeholder != 'always' || !def?.fixed) return null;
+        if (this.#params.placeholder != 'always' || st.defs.length > 1 || !def?.fixed) return null;
 
         let layout = def.layout ??= Mask.#layout(def);
         layout.spans ??= spans(layout, this.#params);
@@ -630,15 +680,18 @@ export default class Mask {
     }
 
     #reconcile(input, stream_next, { prefix = null, caret_fmt = null, silent = false } = {}) {
-        let st = this.#states.get(input);
-        let ctx = { raw: st.result?.raw ?? '', value: input.value, input };
+        let st = this.#states.get(input), holes = this.#holes(st);
+        let ctx = { raw: st.result?.raw ?? '', value: input.value, input, holes };
         let best = run_all(st.defs, stream_next, ctx);
-        if (!best) return;
+        if (!best) return null;
 
         let { result, def, mask_id } = best;
+        // Для отказов: разбор до среза по max_raw и место среза в потоке
+        let out = { def, full: result, cut: null };
 
         if (st.max_raw != null && result.raw.length > st.max_raw) {
-            best = run_all(st.defs, result.stream.slice(0, cap(result, st.max_raw)), ctx);
+            out.cut = cap(result, st.max_raw);
+            best = run_all(st.defs, result.stream.slice(0, out.cut), ctx);
             ({ result, def, mask_id } = best);
         }
 
@@ -651,7 +704,7 @@ export default class Mask {
         st.rendered = text;
 
         if (caret_fmt == null && prefix != null && document.activeElement === input)
-            caret_fmt = caret_for(result, run(def, prefix, { input }).stream.length);
+            caret_fmt = caret_for(result, run(def, prefix, { input, holes }).stream.length);
         if (caret_fmt != null && document.activeElement === input) {
             caret_fmt = Math.min(caret_fmt, text.length);
             input.setSelectionRange(caret_fmt, caret_fmt);
@@ -671,7 +724,7 @@ export default class Mask {
         if (this.#validate_on(st) && input.setCustomValidity)
             input.setCustomValidity(!result.stream || result.complete ? '' : this.#validation_message(input, st));
 
-        if (silent) return;
+        if (silent) return out;
 
         let state = this.#state_of(input, st);
         this.on_input(input, state);
@@ -679,15 +732,26 @@ export default class Mask {
         if (result.complete && !prev?.complete) this.on_complete(input, state);
         if (!result.complete && prev?.complete) this.on_incomplete(input, state);
         if (prev && mask_id !== prev_id)        this.on_mask_change(input, state);
+        return out;
+    }
+
+    // Символ-заполнитель встаёт в слот «дыркой» только в режиме ячеек: там пустая ячейка
+    // в середине потока - норма. В остальных режимах заполнитель - просто неподходящий символ,
+    // иначе позиционный filler-подсказка ('0000N') принимал бы набранную 'N' за пустую ячейку.
+    // Раскладку по st.def здесь не взять - маска выбирается этим же прогоном
+    #holes(st) {
+        let [def] = st.defs;
+        return this.#params.placeholder == 'always' && st.defs.length == 1 && !!(def.fixed || def.fn);
     }
 
     #text_for(input, result) {
+        let { placeholder } = this.#params;
         if (!result.stream) {
             if (document.activeElement !== input) return '';
-            if (this.#params.placeholder == 'always') return render(result, 'always');
-            return this.#params.placeholder == false ? '' : render(result, true);
+            if (placeholder == 'always') return render(result, 'always');
+            return placeholder == false || placeholder == 'typed' ? '' : render(result, true);
         }
-        return render(result, this.#params.placeholder);
+        return render(result, placeholder);
     }
 
     #state_of(input, st) {
@@ -697,7 +761,9 @@ export default class Mask {
             complete: st.result?.complete ?? false,
             mask_id: st.mask_id,
             progress: st.result?.raw.length ?? 0,
-            groups: { ...st.result?.groups }
+            groups: { ...st.result?.groups },
+            empty: !st.stream,
+            skeleton: st.result ? render(st.result, 'always') : ''
         };
     }
 

@@ -19,6 +19,12 @@
         ol li { margin: 6px 0; }
         .tel-intl { display: flex; gap: 6px; }
         .tel-intl input { flex: 1; }
+        .color { position: relative; display: grid; }
+        .color input, .color .hint { grid-area: 1 / 1; }
+        .color input { background: transparent; }
+        .color .hint { padding: 7px 11px; white-space: pre; color: #aaa; pointer-events: none; }
+        .color .hint span:first-child { visibility: hidden; }
+        .color small { color: #c33; }
         button { grid-column: 2; justify-self: start; padding: 8px 20px; font: inherit; }
     </style>
 </head>
@@ -62,6 +68,12 @@
     <label>VIN</label>                       <input name="vin">
     <label>Госномер РФ (лат → кир)</label>   <input name="plate">
     <label>GPS-координаты</label>            <input name="gps">
+    <label>Цвет RAL / NCS (placeholder: 'typed', on_reject)</label>
+    <span class="color">
+        <span class="hint"><span></span><span></span></span>
+        <input name="color" placeholder="RAL 1234 или NCS S 1050-Y90R">
+        <small hidden>Неверный символ</small>
+    </span>
     <label>Цена (разряды, скрытая каретка)</label> <input name="price" inputmode="numeric">
     <label>Сумма (numeral: заполнение справа)</label> <input name="sum" type="text">
     <label>Количество (&lt;input type=number&gt;)</label> <input name="qty" type="number">
@@ -350,6 +362,28 @@
         new Mask({
             target: 'input[name=gps]',
             mask: '[-]{0;1-2}.{0;1-6}, [-]{0;1-3}.{0;1-6}'
+        });
+
+        // Цвет: RAL или NCS в одном поле. Шаблон выбирается по первым символам, пустое поле
+        // показывает родной placeholder, filler служит подсказкой по слотам (0 - цифра, N - буква),
+        // on_reject отличает ошибку ('slot') от лишнего символа после полного кода ('full')
+        const [typed, rest] = document.querySelectorAll('.color .hint span');
+        const color_error = document.querySelector('.color small');
+        new Mask({
+            target: 'input[name=color]',
+            mask: [
+                { pattern: 'RAL 0000',                          filler: '0000' },
+                { pattern: 'NCS S 0000-{{[YRGBN]}}',            filler: '0000N' },
+                { pattern: 'NCS S 0000-{{[YRGB]}}00{{[YRGB]}}', filler: '0000N00N' }
+            ],
+            placeholder: 'typed',
+            before_char: upper,
+            on_input: (input, state) => {
+                color_error.hidden = true;
+                typed.textContent = input.value;
+                rest.textContent = state.empty ? '' : state.skeleton.slice(input.value.length);
+            },
+            on_reject: (input, { reason }) => color_error.hidden = reason != 'slot'
         });
 
         // Цена: разряды по три от конца. Функциональная маска пересобирает шаблон под

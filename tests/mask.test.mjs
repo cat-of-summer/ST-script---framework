@@ -485,6 +485,29 @@ const date_params = {
 }
 
 // ---------------------------------------------------------------------------
+// Отказы (rejected) и дырки
+// ---------------------------------------------------------------------------
+
+{
+    const up = (input, { char }) => char.toUpperCase();
+    const color = build(['RAL 0000', 'NCS S 0000-{{[YRGBN]}}', 'NCS S 0000-{{[YRGB]}}00{{[YRGB]}}'], { before_char: up });
+    let rej = s => run_all(color, s).result.rejected.map(r => [r.at, r.char, r.slot, r.reason]);
+
+    eq(rej('n10a'), [[3, 'A', 2, 'slot']], 'не подошёл слоту - slot и номер слота');
+    eq(rej('ral1234x'), [[7, 'X', null, 'full']], 'шаблон кончился - full');
+    eq(rej('n1050yq'), [[6, 'Q', null, 'full']], 'короткий NCS полон - full');
+    eq(rej('n10 5'), [[3, ' ', 2, 'literal']], 'разделитель не на месте - literal');
+    eq(rej('n1050-y'), [], 'набранный разделитель на своём месте - не отказ');
+    eq(run(def('0000', { before_slot: (i, { char }) => char == '5' ? false : undefined }), '15').rejected
+        .map(r => [r.at, r.reason]), [[1, 'slot']], 'before_slot → false - отказ slot');
+
+    const hint = def({ pattern: 'NCS S 0000-{{[YRGB]}}', filler: '0000N' });
+    eq(run(hint, 'N1050N').formatted, 'NCS S 1050-N', 'по умолчанию заполнитель - дырка (режим ячеек)');
+    eq(run(hint, 'N1050N', { holes: false }).formatted, 'NCS S 1050-', 'holes: false - заполнитель отброшен');
+    eq(render(run(hint, 'N1050'), 'always'), 'NCS S 1050-N', 'скелет: позиционный filler как подсказка');
+}
+
+// ---------------------------------------------------------------------------
 
 console.log(`\nПройдено: ${passed}, провалено: ${failed}`);
 process.exit(failed ? 1 : 0);

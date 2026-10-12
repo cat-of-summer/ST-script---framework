@@ -983,6 +983,106 @@ await test('Mask free: набор без групп не изменился', as
 });
 
 // ---------------------------------------------------------------------------
+// Mask: несколько шаблонов, placeholder: 'typed', on_reject, события
+// ---------------------------------------------------------------------------
+
+const COLOR = `window.rejects = [];
+new Mask({ target: '#d', mask: ['RAL 0000', 'NCS S 0000-{{[YRGBN]}}', 'NCS S 0000-{{[YRGB]}}00{{[YRGB]}}'],
+    placeholder: 'typed',
+    before_char: (input, { char }) => char.toUpperCase(),
+    on_reject: (input, { char, reason }) => rejects.push(char + ':' + reason) })`;
+
+// Чистое поле в фокусе, набор с клавиатуры, итог: значение, полнота, маска, пусто ли, отказы
+async function type_color(page, keys) {
+    await page.$eval('#d', d => { d.focus(); d.clear(); window.rejects = []; });
+    await page.keyboard.type(keys);
+    return page.$eval('#d', d => {
+        let s = d.state();
+        return [d.value, s.complete, s.mask_id, s.empty, rejects.join(' ')];
+    });
+}
+
+await test('Mask: RAL/NCS - автовыбор шаблона, typed, отказы с причиной', async () => {
+    let page = await open_mask(COLOR);
+    let cases = {
+        '1':            ['RAL 1', false, 0, false, ''],
+        'r':            ['RAL ', false, 0, false, ''],
+        'x':            ['', false, 0, true, 'X:slot'],
+        'xx1':          ['RAL 1', false, 0, false, 'X:slot X:slot'],
+        'ral1234':      ['RAL 1234', true, 0, false, ''],
+        'n0500n':       ['NCS S 0500-N', true, 1, false, ''],
+        'n2030b50g':    ['NCS S 2030-B50G', true, 2, false, ''],
+        'n1050-y':      ['NCS S 1050-Y', true, 1, false, ''],
+        'ncs s 0500-n': ['NCS S 0500-N', true, 1, false, ''],
+        '12345':        ['RAL 1234', true, 0, false, '5:full'],
+        's1080y90r':    ['NCS S 1080-Y90R', true, 2, false, ''],
+        'ral1234x':     ['RAL 1234', true, 0, false, 'X:full'],
+        'n1050y90rx':   ['NCS S 1050-Y90R', true, 2, false, 'X:full'],
+        'n1050yq':      ['NCS S 1050-Y', true, 1, false, 'Q:full'],
+        'n10a':         ['NCS S 10', false, 1, false, 'A:slot'],
+        '1a':           ['RAL 1', false, 0, false, 'A:slot'],
+        'n10 ':         ['NCS S 10', false, 1, false, ' :literal'],
+    };
+    for (let [keys, expected] of Object.entries(cases))
+        eq(await type_color(page, keys), expected, `набор "${keys}"`);
+
+    await type_color(page, 'n1050');
+    eq(await page.$eval('#d', d => [d.value, d.state().skeleton]), ['NCS S 1050-', 'NCS S 1050-_'], 'разделитель сразу, skeleton - с заполнителем');
+
+    for (let keys of ['1234', 'n12']) {
+        await type_color(page, keys);
+        for (let i = 0; i < 10; i++) await page.keyboard.press('Backspace');
+        eq(await page.$eval('#d', d => [d.value, d.state().empty]), ['', true], `"${keys}" стирается до пустого поля`);
+    }
+    eq(page.errors, [], 'без ошибок и предупреждений');
+    await page.close();
+});
+
+await test("Mask: 'always' с несколькими шаблонами переключает шаблон", async () => {
+    let page = await open_mask(`new Mask({ target: '#d', mask: ['0000000000', '000000000000'], placeholder: 'always' })`);
+    await page.focus('#d');
+    await page.keyboard.type('123456789012');
+    eq(await page.$eval('#d', d => [d.value, d.state().mask_id, d.state().complete]), ['123456789012', 1, true], 'ИНН 12 цифр');
+
+    await page.$eval('#d', d => d.set_mask(['RAL 0000', 'NCS S 0000-{{[YRGBN]}}']));
+    await page.$eval('#d', d => d.clear());
+    await page.keyboard.type('N10');
+    eq(await page.$eval('#d', d => d.value), 'NCS S 10__-_', 'буква уводит с первого шаблона на второй');
+    await page.close();
+});
+
+await test('Mask: заполнитель-подсказка не принимается за дырку вне режима ячеек', async () => {
+    let page = await open_mask(`new Mask({ target: '#d', mask: [{ pattern: 'NCS S 0000-{{[YRGB]}}', filler: '0000N' }] })`);
+    await page.focus('#d');
+    await page.keyboard.type('NCS S 1050N');
+    eq(await page.$eval('#d', d => [d.value, d.state().skeleton]), ['NCS S 1050-', 'NCS S 1050-N'], 'N не встала в слот тона');
+    await page.close();
+});
+
+await test('Mask: отказ не глотает следующий input, set() шлёт input', async () => {
+    let page = await open_mask(`window.inputs = 0; new Mask({ target: '#d', mask: '0000' });
+        document.querySelector('#d').addEventListener('input', () => inputs++)`);
+    await page.focus('#d');
+    await page.keyboard.type('x');
+    eq(await page.evaluate(() => inputs), 0, 'отказ - события нет');
+    await page.$eval('#d', d => { d.value = '12'; d.dispatchEvent(new Event('input', { bubbles: true })); });
+    eq(await page.$eval('#d', d => d.raw()), '12', 'внешний input после отказа маска разобрала');
+
+    await page.evaluate(() => { inputs = 0; let d = document.querySelector('#d'); d.set('34'); d.set('34'); d.clear(); });
+    eq(await page.evaluate(() => inputs), 2, 'set() и clear() шлют input, повтор того же значения - нет');
+    await page.close();
+
+    page = await open(`<st-app app="t"><input id="d" #model="value"><i id="out">{{ value }}</i></st-app>`, ['app', 'mask']);
+    await page.evaluate(() => App.create({ app: 't', value: '' }));
+    await tick(page);
+    await page.evaluate(() => { new Mask({ target: '#d', mask: '00.00' }); document.querySelector('#d').set('1203'); });
+    await tick(page);
+    eq(await page.textContent('#out'), '12.03', '#model видит set()');
+    eq(page.errors, [], 'без ошибок');
+    await page.close();
+});
+
+// ---------------------------------------------------------------------------
 // destroy() и Select.refresh(): компоненты, которые живут меньше страницы (SPA)
 // ---------------------------------------------------------------------------
 
