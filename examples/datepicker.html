@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Datepicker — календарь на &lt;st-app&gt;</title>
+
+  <!-- IIFE / global: App регистрирует <st-app>, Datepicker — конфиг календаря (Mask внутри) -->
+  <script defer src="../dist/app.min.js"></script>
+  <script defer src="../dist/app/datepicker.min.js"></script>
+  <script defer src="../dist/app/form.min.js"></script>
+
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; }
+    h2 { margin-top: 40px; }
+    pre { background: #f4f4f6; padding: 12px; font-size: 13px; min-height: 3em; }
+
+    /* Вся тема — переменные с фолбэками: их задают здесь, на секции или в :root проекта. */
+    .datepicker { position: relative; display: inline-block; }
+    .datepicker__field { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid var(--datepicker-line, #ccc); border-radius: 8px; background: var(--datepicker-field, #fff); }
+    .datepicker--invalid .datepicker__field { border-color: var(--datepicker-error, #d33); }
+    .datepicker__input { width: 7.5em; border: 0; font: inherit; background: transparent; color: inherit; outline: none; }
+    .datepicker__toggle, .datepicker__prev, .datepicker__next { border: 0; background: none; color: inherit; cursor: pointer; padding: 4px; font-size: 18px; line-height: 1; }
+    .datepicker__popup { position: absolute; z-index: 10; top: calc(100% + 6px); left: 0; padding: 12px; border-radius: 12px; background: var(--datepicker-bg, #fff); color: var(--datepicker-text, #222); box-shadow: 0 8px 24px rgb(0 0 0 / .15); }
+    .datepicker--inline .datepicker__popup { position: static; box-shadow: none; border: 1px solid var(--datepicker-line, #ddd); }
+    .datepicker__nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .datepicker__grid { display: grid; grid-template-columns: repeat(7, 36px); gap: 2px 0; }
+    .datepicker__weekday { text-align: center; font-size: 12px; color: var(--datepicker-muted, #888); }
+    .datepicker__day { height: 36px; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; cursor: pointer; }
+    .datepicker__day:hover { background: var(--datepicker-hover, #eef2ff); }
+    .datepicker__day--other { color: var(--datepicker-muted, #aaa); }
+    .datepicker__day--today { box-shadow: inset 0 0 0 1px var(--datepicker-accent, #4f46e5); }
+    .datepicker__day--in-range { border-radius: 0; background: var(--datepicker-range, #e0e7ff); }
+    .datepicker__day--range-from { border-radius: 8px 0 0 8px; }
+    .datepicker__day--range-to { border-radius: 0 8px 8px 0; }
+    .datepicker__day--selected { background: var(--datepicker-accent, #4f46e5); color: var(--datepicker-accent-text, #fff); }
+    .datepicker__day:disabled { opacity: .35; cursor: default; background: none; }
+    .datepicker__buttons { display: flex; justify-content: space-between; margin-top: 10px; }
+    .datepicker__buttons button { border: 0; background: none; font: inherit; cursor: pointer; color: var(--datepicker-accent, #4f46e5); }
+
+    .dark { --datepicker-bg: #17181d; --datepicker-text: #f2f2f2; --datepicker-field: #17181d; --datepicker-line: rgb(255 255 255 / .1);
+            --datepicker-muted: #6b6b6b; --datepicker-hover: rgb(255 255 255 / .06); --datepicker-accent: #e7eb70; --datepicker-accent-text: #0b0c10;
+            --datepicker-range: rgb(231 235 112 / .12); background: #0b0c10; color: #f2f2f2; padding: 16px; border-radius: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Datepicker</h1>
+  <p>Поле с маской ДД.ММ.ГГГГ и всплывающий календарь. В форму уходит ISO из скрытого поля.</p>
+
+    <st-app app="form">
+      <form>
+        <h2>Одиночная дата</h2>
+        <label for="date">Дата доставки</label>
+        <st-app app="datepicker" id="single" :name="date" :input-id="date" :min="2026-01-01" :required="true"></st-app>
+
+        <h2>Диапазон</h2>
+        <st-app app="datepicker" id="range" :name="period" :range="true" :value="2026-10-12/2026-10-15"></st-app>
+
+        <p><button type="submit">Отправить</button> <button type="reset">Сбросить</button></p>
+      </form>
+    </st-app>
+
+  <h2>Inline с кнопками, тёмная тема</h2>
+  <div class="dark">
+    <st-app app="datepicker" id="inline" :inline="true" :range="true"></st-app>
+  </div>
+
+  <h2>Журнал</h2>
+  <pre id="log"></pre>
+
+  <script>
+    const log = (...a) => document.querySelector('#log').textContent += a.join(' ') + '\n';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      App.create(Form);
+      App.create(Datepicker);
+
+      document.addEventListener('datepicker:change', e => log('datepicker:change', e.target.id, JSON.stringify(e.detail)));
+      document.querySelector('st-app[app=form]').configure({
+        form: {
+          before_send(e) { log('отправка:', JSON.stringify(Object.fromEntries(e.detail.data))); },
+          invalid(e) { log('form:invalid', JSON.stringify(Object.keys(e.detail.errors ?? {}))); },
+        },
+      });
+    });
+  </script>
+</body>
+</html>

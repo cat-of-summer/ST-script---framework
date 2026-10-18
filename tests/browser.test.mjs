@@ -1,5 +1,6 @@
-// Браузерные автотесты App, Modal, Uploader, Core, Cookie, Route и destroy() модулей: node tests/browser.test.mjs
-// Нужен Playwright с Chromium: стоит не в репозитории — путь к нему в PLAYWRIGHT_FROM (README, раздел Tests).
+// Браузерные автотесты App, Modal, Uploader, Core, Cookie, Route, Cut, app/datepicker и destroy() модулей: node tests/browser.test.mjs
+// Нужен Playwright: стоит не в репозитории — путь к нему в PLAYWRIGHT_FROM (README, раздел Tests).
+// Браузер — BROWSER=chromium (по умолчанию) | firefox | webkit; ONLY=подстрока имени — часть тестов.
 // Модули грузятся из dist/ (IIFE-сборки), поэтому перед прогоном нужен npm run build.
 // Страницы отдаются через page.route с фиктивного origin: History API и cookie работают.
 
@@ -10,7 +11,7 @@ import { createRequire } from 'module';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(process.env.PLAYWRIGHT_FROM ?? import.meta.url);
-const { chromium } = require('playwright');
+const playwright = require('playwright');
 
 const ORIGIN = 'http://st.test';
 
@@ -23,7 +24,7 @@ function eq(actual, expected, label) {
     console.error(`FAIL: ${label}\n  ожидалось: ${e}\n  получено:  ${a}`);
 }
 
-const browser = await chromium.launch();
+const browser = await playwright[process.env.BROWSER ?? 'chromium'].launch();
 const context = await browser.newContext();
 let html = '';
 
@@ -52,7 +53,9 @@ async function open(body, modules = ['app'], url = '/') {
 
 const tick = page => page.evaluate(() => new Promise(r => setTimeout(r, 30)));
 
+// ONLY=подстрока — прогнать только тесты с ней в имени (например, ONLY="Toggle ").
 async function test(name, fn) {
+    if (process.env.ONLY && !name.includes(process.env.ONLY)) return;
     try {
         await fn();
     } catch (e) {
@@ -1238,6 +1241,539 @@ await test('Toggle anchor: history.state роутера сохраняется',
         return replaced;
     });
     eq(result, ['#t', { router: 1 }], 'хеш (id триггера) записан, состояние осталось');
+    await page.close();
+});
+
+// ---------------------------------------------------------------------------
+// Toggle: индикатор и доводка таба до видимости
+// ---------------------------------------------------------------------------
+
+// Лента 300px, шесть табов по 120px: видны два с половиной. Панели с id — якорь берёт id цели,
+// чтобы родная прокрутка браузера к фрагменту (она ушла бы к панели) не подменяла доводку ленты.
+function tabs({ bar = '', pill = 'transition: transform .3s, width .3s;', attrs = '', active = 0, outside = false, before = '', after = '' } = {}) {
+    let buttons = [1, 2, 3, 4, 5, 6].map(i => `<button trigger data-t="t${i}" target="#p${i}"${i === active ? ' state="active"' : ''}>Таб ${i}</button>`).join('');
+    let indicator = `<i id="pill"></i>`;
+    return `<style>
+        body { margin: 0; }
+        #wrap { position: relative; width: 300px; }
+        #bar { position: relative; display: flex; width: 300px; overflow-x: auto; ${bar} }
+        #bar button { flex: 0 0 120px; height: 30px; margin: 0; padding: 0; border: 0; }
+        #pill { position: absolute; left: 0; top: 0; height: 2px; width: var(--indicator-width); transform: translateX(var(--indicator-x)); ${pill} }
+    </style>${before}<div id="wrap"><div id="bar"${attrs}>${buttons}${outside ? '' : indicator}</div>${outside ? indicator : ''}</div>
+    ${[1, 2, 3, 4, 5, 6].map(i => `<section id="p${i}"${i === active ? ' state="active"' : ''}>${i}</section>`).join('')}${after}`;
+}
+
+// Хелперы страницы: видимость таба в ленте, совпадение отрисованной пилюли с табом, ожидание
+// конца прокрутки (плавной в том числе).
+const TABS_HELPERS = `<script>
+    window.T = id => document.querySelector('[data-t="' + id.slice(1) + '"]') ?? document.querySelector(id);
+    window.on = id => ['activating', 'active'].includes(T(id).getAttribute('state'));
+    window.done = () => new Promise(r => setTimeout(r, 50));
+    window.bar = () => document.querySelector('#bar');
+    window.fully = (id, pad = 0) => {
+        let t = T(id).getBoundingClientRect(), b = bar().getBoundingClientRect();
+        return t.left >= b.left + pad - 0.5 && t.right <= b.left + bar().clientWidth - pad + 0.5;
+    };
+    window.onPill = id => {
+        let p = document.querySelector('#pill').getBoundingClientRect(), t = T(id).getBoundingClientRect();
+        return Math.abs(p.left - t.left) < 1 && Math.abs(p.width - t.width) < 1;
+    };
+    window.frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    window.settled = async (el = bar()) => {
+        let last = NaN, same = 0;
+        for (let i = 0; i < 200 && same < 5; i++) {
+            await new Promise(r => requestAnimationFrame(r));
+            same = el.scrollLeft === last ? same + 1 : 0;
+            last = el.scrollLeft;
+        }
+    };
+</script>`;
+
+// Клик мышью в видимую часть таба — как пользователь; Playwright page.click сам прокрутил бы ленту.
+async function clickVisible(page, id) {
+    let { x, y } = await page.evaluate(id => {
+        let t = T(id).getBoundingClientRect(), b = bar().getBoundingClientRect();
+        let left = Math.max(t.left, b.left), right = Math.min(t.right, b.left + bar().clientWidth);
+        return { x: (left + right) / 2, y: t.top + t.height / 2 };
+    }, id);
+    await page.mouse.click(x, y);
+}
+
+await test('Toggle indicator: координаты с учётом прокрутки ленты', async () => {
+    let page = await open(TABS_HELPERS + tabs({ pill: '' }), ['toggle']);
+    let result = await page.evaluate(async () => {
+        new Toggle({ trigger: '#bar [trigger]', group: 'radio', indicator: '#pill' });
+        let pill = document.querySelector('#pill');
+        let before = pill.getAttribute('state');
+        bar().scrollLeft = 200;
+        T('#t3').click();
+        await frame();
+        return {
+            before,
+            state: pill.getAttribute('state'),
+            x: pill.style.getPropertyValue('--indicator-x'),
+            width: pill.style.getPropertyValue('--indicator-width'),
+            on: onPill('#t3'),
+        };
+    });
+    eq(result, { before: 'inactive', state: 'active', x: '240px', width: '120px', on: true }, 'x — в координатах содержимого ленты, пилюля на табе');
+    eq(page.errors, [], 'indicator: без ошибок');
+    await page.close();
+});
+
+await test('Toggle indicator: ширина таба изменилась — пилюля подстроилась сразу', async () => {
+    let page = await open(TABS_HELPERS + tabs({ pill: 'transition: transform 1s, width 1s;', active: 3 }), ['toggle']);
+    let result = await page.evaluate(async () => {
+        new Toggle({ trigger: '#bar [trigger]', group: 'radio', indicator: '#pill' });
+        await frame();
+        T('#t2').style.flexBasis = '160px';
+        T('#t3').style.flexBasis = '150px';
+        await frame();
+        return { on: onPill('#t3'), x: document.querySelector('#pill').style.getPropertyValue('--indicator-x') };
+    });
+    eq(result, { on: true, x: '280px' }, 'ResizeObserver: без анимации, позиция и ширина новые');
+    await page.close();
+});
+
+await test('Toggle indicator: лента меняет ширину, табы по центру — пилюля следует', async () => {
+    let page = await open(TABS_HELPERS + `<style>#bar6 { position: relative; display: flex; justify-content: center; width: 100%; }
+        #bar6 button { flex: 0 0 80px; } #pill { position: absolute; left: 0; width: var(--indicator-width); height: 2px; transform: translateX(var(--indicator-x)); transition: transform 1s; }</style>
+        <div id="bar6"><button trigger id="a" state="active">a</button><button trigger id="b">b</button><i id="pill"></i></div>`, ['toggle']);
+    await page.evaluate(() => new Toggle({ trigger: '#bar6 [trigger]', group: 'radio', indicator: '#pill' }));
+    await page.setViewportSize({ width: 600, height: 400 });
+    let on = await page.evaluate(async () => { await frame(); return onPill('#a'); });
+    eq(on, true, 'ресайз окна: пилюля на табе без анимации');
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.close();
+});
+
+await test('Toggle indicator: первая расстановка без выезда из нуля', async () => {
+    let page = await open(TABS_HELPERS + tabs({ pill: 'transition: transform 1s, width 1s;', active: 2 }), ['toggle']);
+    let result = await page.evaluate(async () => {
+        new Toggle({ trigger: '#bar [trigger]', group: 'radio', indicator: '#pill' });
+        let now = onPill('#t2');
+        await new Promise(r => requestAnimationFrame(r));
+        return [now, onPill('#t2')];
+    });
+    eq(result, [true, true], 'сразу и на первом кадре пилюля уже на стартовом табе');
+    await page.close();
+});
+
+await test('Toggle indicator: group true — закрыли последний, state="inactive"', async () => {
+    let page = await open(TABS_HELPERS + tabs({ pill: '' }), ['toggle']);
+    let result = await page.evaluate(async () => {
+        new Toggle({ trigger: '#bar [trigger]', group: true, indicator: '#pill' });
+        let pill = document.querySelector('#pill');
+        T('#t1').click();
+        await done();
+        let opened = pill.getAttribute('state');
+        T('#t1').click();
+        await done();
+        return [opened, pill.getAttribute('state'), pill.style.getPropertyValue('--indicator-x')];
+    });
+    eq(result, ['active', 'inactive', '0px'], 'гаснет на месте: координаты остались');
+    await page.close();
+});
+
+await test('Toggle indicator: без группы — выключили текущий, пилюля к оставшемуся', async () => {
+    let page = await open(TABS_HELPERS + tabs({ pill: '' }), ['toggle']);
+    let result = await page.evaluate(async () => {
+        new Toggle({ trigger: '#bar [trigger]', indicator: '#pill' });
+        T('#t1').click();
+        T('#t2').click();
+        await done();
+        let second = onPill('#t2');
+        T('#t2').click();
+        await done();
+        return [second, onPill('#t1'), document.querySelector('#pill').getAttribute('state')];
+    });
+    eq(result, [true, true, 'active'], 'следует за последним, после выключения — к t1');
+    await page.close();
+});
+
+await test('Toggle indicator: после destroy() не обновляется', async () => {
+    let page = await open(TABS_HELPERS + tabs({ pill: '', active: 1 }), ['toggle']);
+    let result = await page.evaluate(async () => {
+        let toggle = new Toggle({ trigger: '#bar [trigger]', group: 'radio', indicator: '#pill' });
+        await frame();
+        toggle.destroy();
+        T('#t1').style.flexBasis = '200px';
+        await frame();
+        return document.querySelector('#pill').style.getPropertyValue('--indicator-width');
+    });
+    eq(result, '120px', 'ResizeObserver отключён');
+    await page.close();
+});
+
+await test('Toggle reveal: якорь при загрузке доводит таб, страница на месте', async () => {
+    let page = await open(TABS_HELPERS + tabs({ after: '<div style="height:3000px"></div>' }), ['toggle'], '/#p6');
+    let result = await page.evaluate(async () => {
+        window.scrollTo(0, 0);
+        new Toggle({ trigger: '#bar [trigger]', group: 'radio', anchor: true, indicator: '#pill' });
+        await frame();
+        return { scroll: bar().scrollLeft > 0, fully: fully('#t6'), state: on('#t6'), on: onPill('#t6'), y: window.scrollY };
+    });
+    eq(result, { scroll: true, fully: true, state: true, on: true, y: 0 }, 'reveal: false не мешает: якорь доводит всегда');
+    await page.close();
+});
+
+await test('Toggle reveal: hashchange доводит таб (keep_history)', async () => {
+    let page = await open(TABS_HELPERS + tabs({ active: 1 }), ['toggle']);
+    let result = await page.evaluate(async () => {
+        new Toggle({ trigger: '#bar [trigger]', group: 'radio', keep_history: true });
+        history.pushState(null, '', '#p5');
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+        await settled();
+        return { fully: fully('#t5'), state: on('#t5') };
+    });
+    eq(result, { fully: true, state: true }, '«назад/вперёд» на таб за краем — таб в ленте виден');
+    await page.close();
+});
+
+await test('Toggle reveal: стартовый активный таб из разметки виден', async () => {
+    let page = await open(TABS_HELPERS + tabs({ active: 5 }), ['toggle']);
+    let result = await page.evaluate(async () => {
+        new Toggle({ trigger: '#bar [trigger]', group: 'radio', indicator: '#pill' });
+        await frame();
+        return [fully('#t5'), onPill('#t5')];
+    });
+    eq(result, [true, true], 'state="active" на пятом табе — лента прокручена к нему');
+    await page.close();
+});
+
+await test('Toggle reveal: клик по частично видному табу — только при reveal: true', async () => {
+    for (let reveal of [false, true]) {
+        let page = await open(TABS_HELPERS + tabs({ active: 1 }), ['toggle']);
+        await page.evaluate(reveal => new Toggle({ trigger: '#bar [trigger]', group: 'radio', reveal }), reveal);
+        await clickVisible(page, '#t3');
+        let result = await page.evaluate(async () => { await settled(); return { scroll: bar().scrollLeft, fully: fully('#t3') }; });
+        eq(result, reveal ? { scroll: 60, fully: true } : { scroll: 0, fully: false }, `reveal: ${reveal}`);
+        await page.close();
+    }
+});
+
+await test('Toggle reveal: видимый целиком таб ленту не двигает, страница на месте', async () => {
+    let page = await open(TABS_HELPERS + tabs({ active: 1, before: '<div style="height:200px"></div>', after: '<div style="height:3000px"></div>' }), ['toggle']);
+    await page.evaluate(() => { window.scrollTo(0, 150); new Toggle({ trigger: '#bar [trigger]', group: 'radio', reveal: true }); });
+    await clickVisible(page, '#t2');
+    await clickVisible(page, '#t3');
+    let result = await page.evaluate(async () => { await settled(); return { x: window.scrollX, y: window.scrollY, fully: fully('#t3') }; });
+    eq(result, { x: 0, y: 150, fully: true }, 'прокрутилась только лента');
+    await page.close();
+});
+
+await test('Toggle reveal: hover-меню не прокручивается под курсором', async () => {
+    let page = await open(TABS_HELPERS + tabs(), ['toggle']);
+    await page.evaluate(() => new Toggle({ trigger: '#bar [trigger]', action: 'hover', reveal: true }));
+    let box = await page.evaluate(() => { let b = bar().getBoundingClientRect(); return { x: b.left + 270, y: b.top + 15 }; });
+    await page.mouse.move(box.x, box.y);
+    let result = await page.evaluate(async () => { await settled(); return [bar().scrollLeft, on('#t3')]; });
+    eq(result, [0, true], 'наведение включило таб, лента на месте');
+    await page.close();
+});
+
+await test('Toggle reveal: scroll-padding-inline — таб не уходит под стрелки', async () => {
+    let page = await open(TABS_HELPERS + tabs({ bar: 'scroll-padding-inline: 40px;', active: 1 }), ['toggle']);
+    await page.evaluate(() => new Toggle({ trigger: '#bar [trigger]', group: 'radio', reveal: true }));
+    await clickVisible(page, '#t3');
+    let right = await page.evaluate(async () => { await settled(); return fully('#t3', 40); });
+    await page.evaluate(() => T('#t1').click());
+    let left = await page.evaluate(async () => { await settled(); return fully('#t1', 40) || bar().scrollLeft === 0; });
+    eq([right, left], [true, true], 'отступ 40px соблюдён с обеих сторон');
+    await page.close();
+});
+
+await test('Toggle reveal: scroll-snap — после прилипания таб виден целиком', async () => {
+    for (let align of ['start', 'center', 'end']) {
+        let page = await open(TABS_HELPERS + tabs({ bar: `scroll-snap-type: x mandatory;`, active: 1, before: `<style>#bar button { scroll-snap-align: ${align}; }</style>` }), ['toggle']);
+        await page.evaluate(() => new Toggle({ trigger: '#bar [trigger]', group: 'radio', reveal: true }));
+        let seen = [];
+        // Табы за краем ленты мышью не кликнуть — переключение из кода (как стрелки «вперёд/назад»).
+        for (let id of ['#t3', '#t5', '#t2', '#t6', '#t1'])
+            seen.push(await page.evaluate(async id => { T(id).click(); await settled(); return fully(id); }, id));
+        eq(seen, [true, true, true, true, true], `snap-align: ${align}`);
+        await page.close();
+    }
+});
+
+await test('Toggle reveal: плавная прокрутка и быстрые клики подряд', async () => {
+    let page = await open(TABS_HELPERS + tabs({ bar: 'scroll-behavior: smooth;', active: 1 }), ['toggle']);
+    let result = await page.evaluate(async () => {
+        new Toggle({ trigger: '#bar [trigger]', group: 'radio', reveal: true, indicator: '#pill' });
+        for (let id of ['#t4', '#t5', '#t6']) {
+            T(id).click();
+            await new Promise(r => requestAnimationFrame(r));
+        }
+        await settled();
+        await new Promise(r => setTimeout(r, 400));
+        return { fully: fully('#t6'), on: onPill('#t6'), end: bar().scrollLeft === bar().scrollWidth - bar().clientWidth };
+    });
+    eq(result, { fully: true, on: true, end: true }, 'итог — последний таб, пилюля на нём');
+    await page.close();
+});
+
+await test('Toggle reveal: ручная прокрутка между кликами не сбивается', async () => {
+    let page = await open(TABS_HELPERS + tabs({ active: 1 }), ['toggle']);
+    await page.evaluate(() => { new Toggle({ trigger: '#bar [trigger]', group: 'radio', reveal: true }); bar().scrollLeft = 150; });
+    await clickVisible(page, '#t3');
+    let result = await page.evaluate(async () => { await settled(); return bar().scrollLeft; });
+    eq(result, 150, 'таб и так виден целиком — лента не дёрнулась');
+    await page.close();
+});
+
+await test('Toggle reveal: RTL — доводка в нужную сторону, пилюля на табе', async () => {
+    let page = await open(TABS_HELPERS + tabs({ attrs: ' dir="rtl"', pill: '', active: 1 }), ['toggle']);
+    await page.evaluate(() => new Toggle({ trigger: '#bar [trigger]', group: 'radio', reveal: true, indicator: '#pill' }));
+    let before = await page.evaluate(() => fully('#t3'));
+    await clickVisible(page, '#t3');
+    let result = await page.evaluate(async () => { await settled(); return { fully: fully('#t3'), on: onPill('#t3'), scroll: bar().scrollLeft }; });
+    eq([before, result], [false, { fully: true, on: true, scroll: -60 }], 'ушла влево на 60px (scrollLeft отрицательный)');
+    await page.close();
+});
+
+await test('Toggle reveal: вложенные прокрутки — двигается только лента', async () => {
+    let page = await open(TABS_HELPERS + `<div id="outer" style="width:400px; overflow-x:auto"><div style="width:1200px">${tabs({ active: 1 })}</div></div>`, ['toggle']);
+    await page.evaluate(() => new Toggle({ trigger: '#bar [trigger]', group: 'radio', reveal: true }));
+    await page.evaluate(() => T('#t6').click());
+    let result = await page.evaluate(async () => { await settled(); return { fully: fully('#t6'), outer: document.querySelector('#outer').scrollLeft }; });
+    eq(result, { fully: true, outer: 0 }, 'внешняя область осталась на месте');
+    await page.close();
+});
+
+await test('Toggle reveal: якорь на таб в закрытой модалке — доводка при открытии', async () => {
+    let page = await open(TABS_HELPERS + `<div id="box">${tabs()}</div>`, ['modal', 'toggle'], '/#p6');
+    let result = await page.evaluate(async () => {
+        let modal = new Modal({ content: '#box' });
+        new Toggle({ trigger: '#bar [trigger]', group: 'radio', anchor: true, indicator: '#pill' });
+        let hidden = bar().scrollLeft;
+        modal.show();
+        await until(() => modal.state === 'shown');
+        await frame();
+        return { hidden, fully: fully('#t6'), on: onPill('#t6') };
+    });
+    eq(result, { hidden: 0, fully: true, on: true }, 'пока скрыто — ничего, после показа таб и пилюля на месте');
+    await page.close();
+});
+
+await test('Toggle reveal: фокус с клавиатуры — без второго рывка', async () => {
+    let page = await open(TABS_HELPERS + tabs({ active: 1 }), ['toggle']);
+    await page.evaluate(() => new Toggle({ trigger: '#bar [trigger]', group: 'radio', reveal: true }));
+    // Сколько Tab до таба, зависит от движка (Firefox сначала фокусирует документ).
+    for (let i = 0; i < 10 && await page.evaluate(() => document.activeElement.dataset?.t) !== 't4'; i++)
+        await page.keyboard.press('Tab');
+    let focused = await page.evaluate(async () => { await settled(); return [document.activeElement.dataset.t, bar().scrollLeft, fully('#t4')]; });
+    await page.keyboard.press('Enter');
+    let after = await page.evaluate(async () => { await settled(); return [on('#t4'), bar().scrollLeft]; });
+    eq([focused[0], focused[2], after[0], after[1]], ['t4', true, true, focused[1]], 'браузер прокрутил к фокусу, Enter ленту не двигает');
+    await page.close();
+});
+
+await test('Toggle indicator: пилюля вне ленты следует за прокруткой без отставания', async () => {
+    let page = await open(TABS_HELPERS + tabs({ outside: true, active: 2, pill: 'transition: transform 1s, width 1s;' }), ['toggle']);
+    let result = await page.evaluate(async () => {
+        new Toggle({ trigger: '#bar [trigger]', group: 'radio', indicator: '#pill' });
+        await frame();
+        bar().scrollTo({ left: 200, behavior: 'smooth' });
+        let frames = [];
+        for (let i = 0; i < 20; i++) {
+            await new Promise(r => requestAnimationFrame(r));
+            frames.push(onPill('#t2'));
+        }
+        return { off: frames.filter(x => !x).length, moved: bar().scrollLeft > 0 };
+    });
+    eq(result, { off: 0, moved: true }, 'на каждом кадре прокрутки пилюля на табе');
+    await page.close();
+});
+
+// ---------------------------------------------------------------------------
+// Form
+// ---------------------------------------------------------------------------
+
+const FORM = `<st-app app="form"><form action="/submit" method="post"><input name="name" id="name"><button id="send">→</button></form>
+    <div form-done>Спасибо</div></st-app>`;
+
+await test('Form.is_done: экран «Спасибо» после успеха, false после done(false)', async () => {
+    let page = await open(FORM, ['app', 'app/form']);
+    await page.evaluate(() => App.create(Form));
+    await tick(page);
+    let start = await page.evaluate(() => document.querySelector('st-app').is_done);
+    await page.fill('#name', 'Иван');
+    await page.click('#send');
+    await page.evaluate(() => until(() => document.querySelector('st-app').is_done));
+    let result = await page.evaluate(() => {
+        let app = document.querySelector('st-app'), done = app.is_done;
+        app.done(false);
+        return [done, app.is_done];
+    });
+    eq([start, ...result], [false, true, false], 'is_done отражает слот');
+    await page.close();
+});
+
+await test('Form в модалке: рецепт с on_hide возвращает чистую форму', async () => {
+    let page = await open(`<div id="box">${FORM}<button id="close" action="close">x</button></div>`, ['app', 'app/form', 'modal']);
+    await page.evaluate(() => {
+        App.create(Form);
+        window.modal = new Modal({
+            content: '#box',
+            on_hide() {
+                let form = this.content.querySelector('st-app');
+                if (form.is_done) { form.done(false); form.reset(); }
+            },
+        });
+        modal.show();
+    });
+    await page.evaluate(() => until(() => modal.state === 'shown'));
+    await page.fill('#name', 'Иван');
+    await page.click('#send');
+    await page.evaluate(() => until(() => document.querySelector('st-app').is_done));
+    await page.click('#close');
+    await page.evaluate(() => until(() => modal.state === 'hidden'));
+    let result = await page.evaluate(() => {
+        let app = document.querySelector('st-app');
+        return { done: app.is_done, form: app.form.hidden, value: app.field('name').value };
+    });
+    eq(result, { done: false, form: false, value: '' }, 'после закрытия — форма, поля пустые');
+    await page.close();
+});
+
+// ---------------------------------------------------------------------------
+// Cut
+// ---------------------------------------------------------------------------
+
+await test('Cut: svg-фон, клип, пересчёт при ресайзе и destroy', async () => {
+    let page = await open(`<div id="c" style="width:200px;height:100px" cut="200 100 | M10 0H200V90L190 100H0V10Z"></div>`, ['cut']);
+    let result = await page.evaluate(async () => {
+        let cut = new Cut({ scale: 0 });
+        let el = document.querySelector('#c');
+        let first = [el.firstElementChild.getAttribute('class'), el.style.clipPath];
+        el.style.width = '300px';
+        await until(() => el.style.clipPath.includes('300'));
+        let resized = el.style.clipPath;
+        cut.destroy();
+        return { first, resized, after: [el.querySelector('.cut-shape'), el.style.clipPath, Cut.find(el) === undefined] };
+    });
+    eq(result.first, ['cut-shape', 'path("M 10 0 L 200 0 L 200 90 L 190 100 L 0 100 L 0 10 Z")'], 'svg первым ребёнком, клип по пути');
+    eq(result.resized, 'path("M 10 0 L 300 0 L 300 90 L 290 100 L 0 100 L 0 10 Z")', 'шире — вырезы того же размера у своих краёв');
+    eq(result.after, [null, '', true], 'destroy: svg и клип сняты');
+    eq(page.errors, [], 'без ошибок');
+    await page.close();
+});
+
+await test('Cut: фигура брейкпоинта и смена атрибута', async () => {
+    let page = await open(`<div id="c" style="width:100px;height:100px" cut="100 100 | M0 0H100V100H0Z" cut-md="100 100 | M20 0H100V100H0V20Z"></div>`, ['cut']);
+    let result = await page.evaluate(async () => {
+        new Cut({ scale: 0, breakpoints: { md: 1, lp: 100000 } });
+        let el = document.querySelector('#c');
+        let md = el.style.clipPath;
+        el.setAttribute('cut-md', '100 100 | M0 0H80L100 20V100H0Z');
+        await until(() => el.style.clipPath != md);
+        return [md, el.style.clipPath];
+    });
+    eq(result, ['path("M 20 0 L 100 0 L 100 100 L 0 100 L 0 20 Z")', 'path("M 0 0 L 80 0 L 100 20 L 100 100 L 0 100 Z")'],
+        'действует cut-md, новый атрибут перечитан');
+    await page.close();
+});
+
+// ---------------------------------------------------------------------------
+// app/datepicker
+// ---------------------------------------------------------------------------
+
+const DATEPICKER = `<st-app app="form"><form>
+    <label for="d">Дата</label>
+    <st-app app="datepicker" id="single" :name="date" :input-id="d" :min="2026-01-01" :max="2026-12-31"></st-app>
+    <st-app app="datepicker" id="range" :name="period" :range="true" :value="2026-10-12/2026-10-15"></st-app>
+</form></st-app>
+<st-app app="datepicker" id="inline" :inline="true"></st-app>`;
+
+async function datepicker() {
+    let page = await open(DATEPICKER, ['app', 'app/form', 'app/datepicker']);
+    await page.evaluate(async () => {
+        App.create(Form);
+        App.create(Datepicker);
+        window.changes = [];
+        document.addEventListener('datepicker:change', e => changes.push([e.target.id, e.detail.value]));
+        // Готов — когда отработал rendered: календари внутри формы монтируются после неё.
+        await until(() => [...document.querySelectorAll('st-app[app=datepicker]')].every(el => el._mask));
+        // Сетка без значения открывается на сегодняшнем месяце: листаем к октябрю 2026, чтобы тест не зависел от даты.
+        for (let el of document.querySelectorAll('#single, #inline')) el.go((2026 - el.year) * 12 + 10 - el.month);
+    });
+    return page;
+}
+
+const form_data = page => page.evaluate(() => Object.fromEntries(new FormData(document.querySelector('form'))));
+
+await test('datepicker: начальное значение, ISO в форме, сетка', async () => {
+    let page = await datepicker();
+    eq(await form_data(page), { date: '', period_from: '2026-10-12', period_to: '2026-10-15' }, 'скрытые поля с ISO, видимые без name');
+    eq(await page.evaluate(() => [...document.querySelectorAll('#range .datepicker__input')].map(i => i.value)),
+        ['12.10.2026', '15.10.2026'], 'видимые поля в ДД.ММ.ГГГГ');
+    eq(await page.evaluate(() => [
+        document.querySelector('#range .datepicker__caption').textContent,
+        document.querySelectorAll('#range .datepicker__day--in-range').length,
+        document.querySelector('label[for=d]').control?.matches('[datepicker-from]'),
+    ]), ['Октябрь 2026', 2, true], 'месяц значения, диапазон в сетке, label for');
+    eq(page.errors, [], 'без ошибок');
+    await page.close();
+});
+
+await test('datepicker: набор с клавиатуры и проверка', async () => {
+    let page = await datepicker();
+    let check = () => page.evaluate(() => [document.querySelector('#d').validationMessage, document.querySelector('input[name=date]').value]);
+    await page.type('#d', '31022026');
+    eq(await check(), ['Такой даты нет', ''], '31.02 — ошибка, значения нет');
+    await page.fill('#d', '');
+    await page.type('#d', '18102025');
+    eq(await check(), ['Дата не раньше 01.01.2026', ''], 'раньше min — ошибка');
+    await page.fill('#d', '');
+    await page.type('#d', '18102026');
+    eq(await check(), ['', '2026-10-18'], 'верная дата — ISO в скрытом поле');
+    eq(await page.evaluate(() => document.querySelector('#single .datepicker__day--selected')?.textContent), '18', 'и выбрана в сетке');
+    eq(await page.evaluate(() => changes.filter(c => c[0] == 'single').at(-1)), ['single', '2026-10-18'], 'datepicker:change');
+    await page.close();
+});
+
+await test('datepicker: выбор в сетке, диапазон, закрытие', async () => {
+    let page = await datepicker();
+    await page.click('#single .datepicker__toggle');
+    eq(await page.evaluate(() => document.querySelector('#single .datepicker__popup').hidden), false, 'открыт по кнопке');
+    await page.click('#single .datepicker__day[aria-label="5 октября 2026"]');
+    eq(await page.evaluate(() => [document.querySelector('#d').value, document.querySelector('#single .datepicker__popup').hidden]),
+        ['05.10.2026', true], 'одиночная дата: значение и закрытие');
+
+    await page.click('#range .datepicker__toggle');
+    await page.click('#range .datepicker__day[aria-label="20 октября 2026"]');
+    eq(await page.evaluate(() => document.querySelector('#range .datepicker__popup').hidden), false, 'диапазон: после начала открыт');
+    await page.click('#range .datepicker__day[aria-label="8 октября 2026"]');
+    eq(await form_data(page), { date: '2026-10-05', period_from: '2026-10-08', period_to: '2026-10-20' }, 'конец раньше начала — меняются местами');
+
+    await page.click('#range .datepicker__toggle');
+    await page.keyboard.press('Escape');
+    eq(await page.evaluate(() => [document.querySelector('#range .datepicker__popup').hidden, document.activeElement.className]),
+        [true, 'datepicker__toggle'], 'Escape закрывает, фокус на кнопке');
+    await page.click('#range .datepicker__toggle');
+    await page.click('label[for=d]', { position: { x: 1, y: 1 } });
+    eq(await page.evaluate(() => document.querySelector('#range .datepicker__popup').hidden), true, 'клик мимо закрывает');
+    await page.close();
+});
+
+await test('datepicker: inline, reset формы, value из кода', async () => {
+    let page = await datepicker();
+    await page.click('#inline .datepicker__day[aria-label="10 октября 2026"]');
+    eq(await page.evaluate(() => [document.querySelector('#inline').value, document.activeElement.getAttribute('aria-label')]),
+        ['', '10 октября 2026'], 'inline: выбор ещё не значение, фокус на дне');
+    await page.click('#inline .datepicker__apply');
+    eq(await page.evaluate(() => document.querySelector('#inline').value), '2026-10-10', '"Выбрать" — значение');
+
+    await page.click('#range .datepicker__toggle');
+    await page.click('#range .datepicker__day[aria-label="20 октября 2026"]');
+    await page.click('#range .datepicker__day[aria-label="22 октября 2026"]');
+    await page.evaluate(() => document.querySelector('form').reset());
+    await page.waitForFunction(() => document.querySelector('#range [datepicker-from]').value == '12.10.2026');
+    eq(await form_data(page), { date: '', period_from: '2026-10-12', period_to: '2026-10-15' }, 'reset — начальное значение');
+
+    await page.evaluate(() => { document.querySelector('#single').value = '2026-03-08'; });
+    await page.waitForFunction(() => document.querySelector('#d').value == '08.03.2026');
+    eq(await page.evaluate(() => document.querySelector('#single .datepicker__caption').textContent), 'Март 2026', 'value из кода перерисовывает');
     await page.close();
 });
 

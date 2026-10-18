@@ -69,6 +69,26 @@
     .tab-panel[state="active"], .tab-panel[state="activating"] {
       opacity: 1; height: auto; overflow: visible;
     }
+
+    /* --- Лента табов с прокруткой и индикатором --- */
+    /* Индикатор — внутри ленты: прокручивается вместе с табами. Координаты пишет Toggle. */
+    .strip {
+      position: relative; display: flex; gap: 4px; overflow-x: auto; padding: 4px;
+      background: #f3f3f3; border-radius: 12px; scroll-behavior: smooth; scroll-padding-inline: 32px;
+    }
+    .strip-tab {
+      position: relative; z-index: 1; flex: 0 0 auto; padding: 8px 16px; border-radius: 8px;
+      white-space: nowrap; transition: color .3s;
+    }
+    .strip-tab[state="active"], .strip-tab[state="activating"] { color: #fff; }
+    .strip-pill {
+      position: absolute; left: 0; top: 0; border-radius: 8px; background: #1a73e8;
+      width: var(--indicator-width); height: var(--indicator-height);
+      transform: translate(var(--indicator-x), var(--indicator-y));
+      transition: transform .3s ease, width .3s ease;
+    }
+    .strip-panel { padding: 12px 4px; display: none; }
+    .strip-panel[state="active"], .strip-panel[state="activating"] { display: block; }
   </style>
 </head>
 <body>
@@ -121,6 +141,14 @@
     <div class="tab-panel" id="tab-reviews">Отзывы покупателей и оценки.</div>
   </div>
 
+  <h2>5. Лента табов с прокруткой и индикатором (<code>indicator</code>, <code>reveal</code>)</h2>
+  <p>Пилюля следует за активным табом с учётом прокрутки ленты и ресайза окна. Клик по табу у края
+     доводит его до видимости (<code>reveal: true</code>), ссылка
+     <a href="?strip#strip-12">…toggle.html#strip-12</a> (открывает страницу заново) — всегда:
+     прокручивается только лента.</p>
+  <div class="strip" id="strip"><i class="strip-pill"></i></div>
+  <div id="strip-panels"></div>
+
   <script>
     // defer-скрипт уже выполнился к DOMContentLoaded → window.toggle доступен.
     window.addEventListener('DOMContentLoaded', () => {
@@ -168,10 +196,31 @@
       },
     });
 
+    // 5. Лента табов: двенадцать вкладок не помещаются, стартовая — state="active" в разметке.
+    //    Создаётся раньше вкладки по умолчанию из п. 4: её activate() перепишет хеш.
+    const names = ['Обзор', 'Характеристики', 'Доставка', 'Оплата', 'Отзывы', 'Вопросы',
+                   'Гарантия', 'Сервис', 'Комплектация', 'Документы', 'Аксессуары', 'Похожие'];
+    names.forEach((name, i) => {
+      const first = i === 0 ? ' state="active"' : '';
+      document.getElementById('strip').insertAdjacentHTML('beforeend',
+        `<div class="strip-tab" trigger target="#strip-${i + 1}"${first}>${name}</div>`);
+      document.getElementById('strip-panels').insertAdjacentHTML('beforeend',
+        `<div class="strip-panel" id="strip-${i + 1}"${first}>Вкладка «${name}».</div>`);
+    });
+
+    new Toggle({
+      trigger: '#strip [trigger]',
+      group: 'radio',
+      anchor: true,
+      indicator: '#strip .strip-pill',
+      reveal: true,
+    });
+
     // Дефолтная вкладка: если по #id из URL ничего не открылось — открыть первую.
     const anyActive = [...document.querySelectorAll('#tabs [trigger]')]
       .some(t => ['active', 'activating'].includes(t.getAttribute('state')));
     if (!anyActive) tabs.activate(document.querySelector('#tabs [trigger]'));
+
     });
   </script>
 </body>

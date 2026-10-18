@@ -128,6 +128,9 @@ export default {
     get form() {
         return this._form;
     },
+    get is_done() {
+        return !!this.form?.hidden && !!this.querySelector('[form-done]');
+    },
     fields(name = null) {
         if (!name)
             return Array.from(this.form.elements);
