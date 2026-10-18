@@ -7,11 +7,16 @@
 // partials folder) and is never treated as an entry. For each bundle two
 // minified outputs are produced:
 //
-//   dist/<name>.esm.min.js  — ES module  (import / npm / <script type="module">)
-//   dist/<name>.min.js      — IIFE global (CDN <script defer>); the module's
-//                             default export is exposed as window.<ExportName>,
-//                             where <ExportName> is the name of the class in the
-//                             source (`export default class Modal` → window.Modal).
+//   dist/<name>.esm.min.js  — ES module  (import / npm / <script type="module">);
+//                             another module it imports (app/datepicker → mask,
+//                             app/form → core) stays an import of that module's
+//                             own ESM file, so a project bundles each class once
+//                             and `Mask.find` sees the instances of every user
+//   dist/<name>.min.js      — IIFE global (CDN <script defer>); self-contained,
+//                             imported modules are inlined. The module's default
+//                             export is exposed as window.<ExportName>, where
+//                             <ExportName> is the name of the class in the source
+//                             (`export default class Modal` → window.Modal).
 //
 // Both get a source map (`<file>.map`, sources embedded). The ESM one is linked
 // via `//# sourceMappingURL`; the IIFE one is external — no link comment, since
@@ -23,7 +28,7 @@
 
 import * as esbuild from 'esbuild';
 import { readdirSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 
 const SRC = 'src';
 const OUT = 'dist';
@@ -56,6 +61,24 @@ function globalNameFor(name, entry) {
   return seg.charAt(0).toUpperCase() + seg.slice(1);
 }
 
+// ESM only: an import that resolves to another entry becomes an external import of
+// that entry's ESM output, relative to the importing bundle's own file.
+function siblingModules(name, entries) {
+  const byPath = new Map(entries.map(e => [resolve(e.entry), e.name]));
+  return {
+    name: 'sibling-modules',
+    setup(build) {
+      build.onResolve({ filter: /^\.\.?\// }, args => {
+        const other = byPath.get(resolve(args.resolveDir, args.path));
+        if (!other || other === name) return;
+        let path = relative(dirname(`${OUT}/${name}`), `${OUT}/${other}.esm.min.js`).split(sep).join('/');
+        if (!path.startsWith('.')) path = './' + path;
+        return { path, external: true };
+      });
+    },
+  };
+}
+
 async function buildAll() {
   rmSync(OUT, { recursive: true, force: true });
   mkdirSync(OUT, { recursive: true });
@@ -72,6 +95,7 @@ async function buildAll() {
       outfile: `${OUT}/${name}.esm.min.js`,
       bundle: true,
       format: 'esm',
+      plugins: [siblingModules(name, entries)],
       minify: true,
       legalComments: 'none',
       sourcemap: true,

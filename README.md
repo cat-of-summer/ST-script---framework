@@ -3,9 +3,12 @@
 Standalone JavaScript classes / components, authored as ES modules and shipped in
 two flavours per module:
 
-- **ESM** (`*.esm.min.js`) — for `import` (npm bundlers, `<script type="module">`).
+- **ESM** (`*.esm.min.js`) — for `import` (npm bundlers, `<script type="module">`). A module that
+  uses another one imports its ESM file instead of inlining it (`app/datepicker` → `../mask.esm.min.js`,
+  `app/form` → `../core.esm.min.js`), so a project that imports both bundles each class once and
+  `Mask.find()` sees the masks set by the datepicker.
 - **IIFE / global** (`*.min.js`) — for a plain CDN `<script defer>` (exposes a
-  global named after the module).
+  global named after the module). Self-contained: imported modules are inlined.
 
 | Module                | Global / element    | Notes                                            |
 | --------------------- | ------------------- | ------------------------------------------------ |
@@ -126,7 +129,8 @@ git push origin v1.1.0
 
 ```bash
 node tests/core.test.mjs      # и остальные tests/*.test.mjs без DOM
-npm run build                 # браузерным тестам нужен dist/
+npm run build                 # браузерным тестам и tests/build.test.mjs нужен dist/
+node tests/build.test.mjs     # ESM импортирует соседние модули, IIFE самодостаточна
 node tests/browser.test.mjs   # App, Modal, Uploader, Core, Cookie, Route — нужен Playwright с Chromium
 ```
 
