@@ -34,7 +34,7 @@ App.create(datepicker);
 
 ## Разметка
 
-Разметку строит шаблон конфига, `<st-app>` остаётся пустым. Данные передаются атрибутами `:prop`:
+Разметку строит шаблон конфига, если `<st-app>` пустой; разметка внутри `<st-app>` заменяет его (см. "Свой шаблон"). Данные передаются атрибутами `:prop`:
 
 ```html
 <label for="delivery-date">Дата доставки</label>
@@ -72,9 +72,15 @@ messages: {
 }
 ```
 
-Свои тексты и свой шаблон задаются через `App.extend('datepicker', { messages: {…}, template: '…' })`
-до монтирования. В своём шаблоне сохраните маркеры `datepicker-from`, `datepicker-to` и
-`datepicker-value="from|to"`: по ним конфиг находит поля.
+Свои тексты задаются через `App.extend('datepicker', { messages: {…} })` до монтирования.
+
+### Свой шаблон
+
+Разметка внутри `<st-app app="datepicker">` заменяет встроенный шаблон - как у любого `st_app`.
+Так проект держит вёрстку календаря у себя (обёртка `default/Datepicker` в шаблонах ST-forge),
+а логика остаётся в конфиге. За основу берите `template` из `src/app/datepicker/index.js` и
+сохраните маркеры `datepicker-from`, `datepicker-to` и `datepicker-value="from|to"`: по ним конфиг
+находит поля. Имена скрытых полей и `id` в своём шаблоне можно писать сразу, без `{{ }}`.
 
 ---
 
@@ -85,12 +91,12 @@ messages: {
 
 | Класс | Элемент |
 |---|---|
-| `.datepicker` | корень; модификаторы `--range`, `--inline`, `--open`, `--invalid` (ошибка после ухода из поля или попытки отправки) |
-| `.datepicker__field` | строка полей с кнопкой |
+| `[app="datepicker"]` | корень - сам `<st-app>`; от него и пишутся стили |
+| `.datepicker__field` | строка полей с кнопкой; `--invalid` - ошибка после ухода из поля или попытки отправки |
 | `.datepicker__input` | видимое поле (`[datepicker-from]`, `[datepicker-to]`) |
 | `.datepicker__dash` | тире между полями диапазона |
-| `.datepicker__toggle` | кнопка календаря, `aria-expanded` |
-| `.datepicker__popup` | сетка с навигацией; закрытая - атрибут `hidden` |
+| `.datepicker__toggle` | кнопка календаря; открыт - `aria-expanded="true"` |
+| `.datepicker__popup` | сетка с навигацией; закрытая - атрибут `hidden`; `--inline` - режим `inline` |
 | `.datepicker__nav`, `.datepicker__prev`, `.datepicker__next`, `.datepicker__caption` | навигация по месяцам и заголовок "Октябрь 2026" |
 | `.datepicker__grid` | сетка 7 колонок: 7 `.datepicker__weekday` и 42 `.datepicker__day` |
 | `.datepicker__day` | день; модификаторы `--other` (соседний месяц), `--today`, `--selected`, `--in-range`, `--range-from`, `--range-to`; вне границ - `disabled` |

@@ -24,6 +24,7 @@ const ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke
 // Календарь: поле с маской ДД.ММ.ГГГГ (или два — для диапазона), кнопка и всплывающая сетка
 // месяца; inline — только сетка с кнопками "Сбросить" и "Выбрать". В форму уходит ISO из
 // скрытых полей: name — одиночная дата, name_from и name_to — диапазон.
+// Разметка — template ниже; разметка внутри <st-app> её заменяет (свой шаблон в проекте).
 // Регистрация — App.create(datepicker); Mask входит в бандл, App — нет.
 export default {
     app: 'datepicker',
@@ -62,33 +63,32 @@ export default {
         return this.year ? title(this.year, this.month) : '';
     },
 
+    // Корень — сам <st-app app="datepicker">: стили — от [app="datepicker"], модификаторы — на элементах.
     template: `
-<div class="datepicker" #class="{ 'datepicker--range': range, 'datepicker--inline': inline, 'datepicker--open': is_open, 'datepicker--invalid': invalid }">
-    <div class="datepicker__field" #show="!inline">
-        <input class="datepicker__input" datepicker-from type="text" inputmode="numeric" autocomplete="off" id="{{ inputId }}" required="{{ required }}">
-        <span class="datepicker__dash" #show="range" aria-hidden="true">—</span>
-        <input class="datepicker__input" datepicker-to type="text" inputmode="numeric" autocomplete="off" aria-label="Конец периода" #show="range" required="{{ required && range }}">
-        <button class="datepicker__toggle" type="button" aria-label="Открыть календарь" aria-haspopup="dialog" aria-expanded="{{ is_open }}" @click="toggle()">${ICON}</button>
+<div class="datepicker__field" #class="{ 'datepicker__field--invalid': invalid }" #show="!inline">
+    <input class="datepicker__input" datepicker-from type="text" inputmode="numeric" autocomplete="off" id="{{ inputId }}" required="{{ required }}">
+    <span class="datepicker__dash" #show="range" aria-hidden="true">—</span>
+    <input class="datepicker__input" datepicker-to type="text" inputmode="numeric" autocomplete="off" aria-label="Конец периода" #show="range" required="{{ required && range }}">
+    <button class="datepicker__toggle" type="button" aria-label="Открыть календарь" aria-haspopup="dialog" aria-expanded="{{ is_open }}" @click="toggle()">${ICON}</button>
+</div>
+<input type="hidden" datepicker-value="from" name="{{ name ? (range ? name + '_from' : name) : '' }}">
+<input type="hidden" datepicker-value="to" name="{{ name && range ? name + '_to' : '' }}" disabled="{{ !range }}">
+<div class="datepicker__popup" #class="{ 'datepicker__popup--inline': inline }" role="dialog" aria-label="Выбор даты" hidden="{{ !inline && !is_open }}">
+    <div class="datepicker__nav">
+        <button class="datepicker__prev" type="button" aria-label="Предыдущий месяц" @click="go(-1)">‹</button>
+        <span class="datepicker__caption" aria-live="polite">{{ caption }}</span>
+        <button class="datepicker__next" type="button" aria-label="Следующий месяц" @click="go(1)">›</button>
     </div>
-    <input type="hidden" datepicker-value="from" name="{{ name ? (range ? name + '_from' : name) : '' }}">
-    <input type="hidden" datepicker-value="to" name="{{ name && range ? name + '_to' : '' }}" disabled="{{ !range }}">
-    <div class="datepicker__popup" role="dialog" aria-label="Выбор даты" hidden="{{ !inline && !is_open }}">
-        <div class="datepicker__nav">
-            <button class="datepicker__prev" type="button" aria-label="Предыдущий месяц" @click="go(-1)">‹</button>
-            <span class="datepicker__caption" aria-live="polite">{{ caption }}</span>
-            <button class="datepicker__next" type="button" aria-label="Следующий месяц" @click="go(1)">›</button>
-        </div>
-        <div class="datepicker__grid">
-            <span class="datepicker__weekday" aria-hidden="true" #for="day in weekdays">{{ day }}</span>
-            <button class="datepicker__day" type="button" #for="cell in days" #key="$index"
-                #class="{ 'datepicker__day--other': cell.other, 'datepicker__day--today': cell.today, 'datepicker__day--selected': cell.selected, 'datepicker__day--in-range': cell.in_range, 'datepicker__day--range-from': cell.range_from, 'datepicker__day--range-to': cell.range_to }"
-                disabled="{{ cell.disabled }}" aria-pressed="{{ cell.selected }}" aria-label="{{ cell.label }}"
-                @click="pick(cell.iso)">{{ cell.day }}</button>
-        </div>
-        <div class="datepicker__buttons" #show="inline">
-            <button class="datepicker__reset" type="button" @click="clear()">Сбросить</button>
-            <button class="datepicker__apply" type="button" @click="apply()">Выбрать</button>
-        </div>
+    <div class="datepicker__grid">
+        <span class="datepicker__weekday" aria-hidden="true" #for="day in weekdays">{{ day }}</span>
+        <button class="datepicker__day" type="button" #for="cell in days" #key="$index"
+            #class="{ 'datepicker__day--other': cell.other, 'datepicker__day--today': cell.today, 'datepicker__day--selected': cell.selected, 'datepicker__day--in-range': cell.in_range, 'datepicker__day--range-from': cell.range_from, 'datepicker__day--range-to': cell.range_to }"
+            disabled="{{ cell.disabled }}" aria-pressed="{{ cell.selected }}" aria-label="{{ cell.label }}"
+            @click="pick(cell.iso)">{{ cell.day }}</button>
+    </div>
+    <div class="datepicker__buttons" #show="inline">
+        <button class="datepicker__reset" type="button" @click="clear()">Сбросить</button>
+        <button class="datepicker__apply" type="button" @click="apply()">Выбрать</button>
     </div>
 </div>`,
 
