@@ -823,21 +823,25 @@ await test('Cookie.callback: записанный null не перезапуск
 // Route
 // ---------------------------------------------------------------------------
 
+// Первый разбор адреса (микрозадача), history.back() и смена location.hash асинхронны: под
+// нагрузкой полного прогона popstate и hashchange приходят позже любой фиксированной паузы.
+// Поэтому ждём записи в журнал, а не время.
+
 await test('Route: history-режим', async () => {
     let page = await open(`<a id="l" href="/item/7?x=1">i</a><a id="ext" href="https://other.test/">o</a>`, ['route'], '/');
     let log = await page.evaluate(async () => {
-        let wait = () => new Promise(r => setTimeout(r, 30));
         let log = [];
+        let logged = n => until(() => log.length >= n);
         let r = new Route({ mode: 'history', not_found: p => log.push('404 ' + p) });
         r.get('/', () => log.push('home'));
         r.get('/item/{id}', id => log.push('item ' + id + ' ' + r.query.x));
-        await wait();
+        await logged(1);
         document.querySelector('#l').click();
-        await wait();
+        await logged(2);
         r.navigate('/nope');
-        await wait();
+        await logged(3);
         history.back();
-        await wait();
+        await logged(4);
         return [...log, location.pathname];
     });
     eq(log, ['home', 'item 7 1', '404 /nope', 'item 7 1', '/item/7'], 'старт, клик по ссылке, 404, назад');
@@ -847,16 +851,16 @@ await test('Route: history-режим', async () => {
 await test('Route: hash-режим', async () => {
     let page = await open(``, ['route'], '/#/a');
     let log = await page.evaluate(async () => {
-        let wait = () => new Promise(r => setTimeout(r, 30));
         let log = [];
+        let logged = n => until(() => log.length >= n);
         let r = new Route({ mode: 'hash' });
         r.get('/a', () => log.push('a'));
         r.get('/b/{n}', n => log.push('b' + n + r.query.q));
-        await wait();
+        await logged(1);
         r.navigate('/b/2?q=!');
-        await wait();
+        await logged(2);
         location.hash = '#/a';
-        await wait();
+        await logged(3);
         return log;
     });
     eq(log, ['a', 'b2!', 'a'], 'hash: старт, navigate с query, hashchange');
