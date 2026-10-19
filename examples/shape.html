@@ -3,46 +3,46 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cut — фигуры с вырезами по пути из Figma</title>
+  <title>Shape — фигуры по пути из Figma</title>
 
-  <!-- IIFE / global: window.Cut -->
-  <script defer src="../dist/cut.min.js"></script>
+  <!-- IIFE / global: window.Shape -->
+  <script defer src="../dist/shape.min.js"></script>
 
   <style>
     html { font-size: 10px; }
     body { font: 1.6rem/1.4 system-ui, sans-serif; max-width: 960px; margin: 40px auto; padding: 0 16px; background: #0b0c10; color: #f2f2f2; }
 
-    /* То же, что st-style [cut]: svg — фон и обводка, цвета — переменные с фолбэком. */
-    [cut] { position: relative; isolation: isolate; }
-    [cut] > .cut-shape { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-    [cut] > .cut-shape path { fill: var(--cut-bg, #17181d); stroke: var(--cut-line, rgb(255 255 255 / .15)); stroke-width: 2px; transition: fill .3s, stroke .3s; }
+    /* То же, что st-style [shape]: svg — фон и обводка, цвета — переменные с фолбэком. */
+    [shape] { position: relative; isolation: isolate; }
+    [shape] > .shape-layer { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+    [shape] > .shape-layer path { fill: var(--shape-bg, #17181d); stroke: var(--shape-line, rgb(255 255 255 / .15)); stroke-width: 2px; transition: fill .3s, stroke .3s; }
 
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
     .plate { padding: 24px; min-height: 160px; resize: horizontal; overflow: auto; }
-    .plate:hover { --cut-bg: rgb(40 41 31 / .81); --cut-line: rgb(231 235 112 / .4); }
+    .plate:hover { --shape-bg: rgb(40 41 31 / .81); --shape-line: rgb(231 235 112 / .4); }
 
     /* Фигура на дочернем __bg: выступающая картинка не обрезается клипом. */
     .tech { position: relative; isolation: isolate; padding: 24px; min-height: 200px; }
     .tech__bg { position: absolute; inset: 0; z-index: -1; }
     .tech__img { position: absolute; right: -16px; top: -24px; width: 96px; height: 96px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #e7eb70, #a3701a); }
-    .tech:hover { --cut-bg: rgb(40 41 31 / .81); --cut-line: rgb(231 235 112 / .4); }
+    .tech:hover { --shape-bg: rgb(40 41 31 / .81); --shape-line: rgb(231 235 112 / .4); }
   </style>
 </head>
 <body>
-  <h1>Cut</h1>
+  <h1>Shape</h1>
   <p>Вырезы сохраняют размер, прямые участки тянутся. Потяните правый нижний угол плашки.</p>
 
   <div class="grid">
-    <div class="plate" id="plate" cut="300 160 | M16 0H300V144L284 160H0V16Z">
+    <div class="plate" id="plate" shape="300 160 | M16 0H300V144L284 160H0V16Z">
       Срезаны левый верхний и правый нижний углы.
     </div>
 
-    <div class="plate" id="lp" cut="300 160 | M0 0H300V160H0Z" cut-md="300 160 | M24 0H276L300 24V160H0V24Z">
-      С md (768px) — другая фигура: атрибут cut-md.
+    <div class="plate" id="lp" shape="300 160 | M0 0H300V160H0Z" shape-md="300 160 | M24 0H276L300 24V160H0V24Z">
+      С md (768px) — другая фигура: атрибут shape-md.
     </div>
 
     <div class="tech" id="tech">
-      <div class="tech__bg" cut="300 200 | M20 0H300V180L280 200H0V20Z"></div>
+      <div class="tech__bg" shape="300 200 | M20 0H300V180L280 200H0V20Z"></div>
       <span class="tech__img" aria-hidden="true"></span>
       Фигура на дочернем __bg, ховер родителя её перекрашивает.
     </div>
@@ -50,7 +50,7 @@
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      window.cut = new Cut();
+      window.shape = new Shape();
     });
   </script>
 </body>

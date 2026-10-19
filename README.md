@@ -29,7 +29,7 @@ two flavours per module:
 | `route`               | `window.Route`      | URL reactions; SPA mode (`history` / `hash`).    |
 | `app/form`            | `window.Form`       | Form app **config object** — register with `App.create(form)`; `app` is not bundled. |
 | `app/datepicker`      | `window.Datepicker` | Calendar app **config object** (masked `ДД.ММ.ГГГГ` field, range, `min`/`max`, inline) — `App.create(datepicker)`; bundles `mask`, not `app`. |
-| `cut`                 | `window.Cut`        | Cut-corner shapes from Figma paths: SVG background + `clip-path`, per-breakpoint variants. |
+| `shape`               | `window.Shape`      | Shapes from Figma paths (corners keep their size, edges stretch): SVG background + `clip-path`, per-breakpoint variants. |
 
 Документация по каждому модулю — `docs/src/<module>/index.js.md`, например
 [`docs/src/app/index.js.md`](docs/src/app/index.js.md): директивы шаблона, `watch()` (в том

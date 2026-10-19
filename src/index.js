@@ -14,4 +14,4 @@ export { default as Toggle } from './toggle/index.js';
 export { default as Typograf } from './typograf/index.js';
 export { default as Uploader } from './uploader/index.js';
 export { default as Validator } from './validator/index.js';
-export { default as Cut } from './cut/index.js';
+export { default as Shape } from './shape/index.js';

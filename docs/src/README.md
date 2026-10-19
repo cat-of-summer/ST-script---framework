@@ -7,7 +7,7 @@
 - [app](app/)
 - [cookie](cookie/)
 - [core](core/)
-- [cut](cut/)
+- [shape](shape/)
 - [loader](loader/)
 - [mask](mask/)
 - [modal](modal/)

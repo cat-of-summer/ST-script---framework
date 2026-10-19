@@ -1,5 +1,5 @@
 <!-- DOCGEN:START -->
-# cut
+# shape
 
 ## Файлы
 

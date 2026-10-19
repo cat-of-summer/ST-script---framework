@@ -10,7 +10,8 @@
   },
   "files": [
     "src",
-    "dist"
+    "dist",
+    "docs/**/*.md"
   ],
   "exports": {
     "./*": "./dist/*.esm.min.js",

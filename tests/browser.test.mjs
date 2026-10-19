@@ -1,4 +1,4 @@
-// Браузерные автотесты App, Modal, Uploader, Core, Cookie, Route, Cut, app/datepicker и destroy() модулей: node tests/browser.test.mjs
+// Браузерные автотесты App, Modal, Uploader, Core, Cookie, Route, Shape, app/datepicker и destroy() модулей: node tests/browser.test.mjs
 // Нужен Playwright: стоит не в репозитории — путь к нему в PLAYWRIGHT_FROM (README, раздел Tests).
 // Браузер — BROWSER=chromium (по умолчанию) | firefox | webkit; ONLY=подстрока имени — часть тестов.
 // Модули грузятся из dist/ (IIFE-сборки), поэтому перед прогоном нужен npm run build.
@@ -1637,40 +1637,40 @@ await test('Form в модалке: рецепт с on_hide возвращает
 });
 
 // ---------------------------------------------------------------------------
-// Cut
+// Shape
 // ---------------------------------------------------------------------------
 
-await test('Cut: svg-фон, клип, пересчёт при ресайзе и destroy', async () => {
-    let page = await open(`<div id="c" style="width:200px;height:100px" cut="200 100 | M10 0H200V90L190 100H0V10Z"></div>`, ['cut']);
+await test('Shape: svg-фон, клип, пересчёт при ресайзе и destroy', async () => {
+    let page = await open(`<div id="c" style="width:200px;height:100px" shape="200 100 | M10 0H200V90L190 100H0V10Z"></div>`, ['shape']);
     let result = await page.evaluate(async () => {
-        let cut = new Cut({ scale: 0 });
+        let shape = new Shape({ scale: 0 });
         let el = document.querySelector('#c');
         let first = [el.firstElementChild.getAttribute('class'), el.style.clipPath];
         el.style.width = '300px';
         await until(() => el.style.clipPath.includes('300'));
         let resized = el.style.clipPath;
-        cut.destroy();
-        return { first, resized, after: [el.querySelector('.cut-shape'), el.style.clipPath, Cut.find(el) === undefined] };
+        shape.destroy();
+        return { first, resized, after: [el.querySelector('.shape-layer'), el.style.clipPath, Shape.find(el) === undefined] };
     });
-    eq(result.first, ['cut-shape', 'path("M 10 0 L 200 0 L 200 90 L 190 100 L 0 100 L 0 10 Z")'], 'svg первым ребёнком, клип по пути');
+    eq(result.first, ['shape-layer', 'path("M 10 0 L 200 0 L 200 90 L 190 100 L 0 100 L 0 10 Z")'], 'svg первым ребёнком, клип по пути');
     eq(result.resized, 'path("M 10 0 L 300 0 L 300 90 L 290 100 L 0 100 L 0 10 Z")', 'шире — вырезы того же размера у своих краёв');
     eq(result.after, [null, '', true], 'destroy: svg и клип сняты');
     eq(page.errors, [], 'без ошибок');
     await page.close();
 });
 
-await test('Cut: фигура брейкпоинта и смена атрибута', async () => {
-    let page = await open(`<div id="c" style="width:100px;height:100px" cut="100 100 | M0 0H100V100H0Z" cut-md="100 100 | M20 0H100V100H0V20Z"></div>`, ['cut']);
+await test('Shape: фигура брейкпоинта и смена атрибута', async () => {
+    let page = await open(`<div id="c" style="width:100px;height:100px" shape="100 100 | M0 0H100V100H0Z" shape-md="100 100 | M20 0H100V100H0V20Z"></div>`, ['shape']);
     let result = await page.evaluate(async () => {
-        new Cut({ scale: 0, breakpoints: { md: 1, lp: 100000 } });
+        new Shape({ scale: 0, breakpoints: { md: 1, lp: 100000 } });
         let el = document.querySelector('#c');
         let md = el.style.clipPath;
-        el.setAttribute('cut-md', '100 100 | M0 0H80L100 20V100H0Z');
+        el.setAttribute('shape-md', '100 100 | M0 0H80L100 20V100H0Z');
         await until(() => el.style.clipPath != md);
         return [md, el.style.clipPath];
     });
     eq(result, ['path("M 20 0 L 100 0 L 100 100 L 0 100 L 0 20 Z")', 'path("M 0 0 L 80 0 L 100 20 L 100 100 L 0 100 Z")'],
-        'действует cut-md, новый атрибут перечитан');
+        'действует shape-md, новый атрибут перечитан');
     await page.close();
 });
 

@@ -1,7 +1,7 @@
-// Автотесты чистого движка фигур с вырезами: node tests/cut.test.mjs
-// Ненулевой exit-код при провале. DOM не нужен — движок это src/cut/_engine.js.
+// Автотесты чистого движка фигур: node tests/shape.test.mjs
+// Ненулевой exit-код при провале. DOM не нужен — движок это src/shape/_engine.js.
 
-import { parse, build, pick } from '../src/cut/_engine.js';
+import { parse, build, pick } from '../src/shape/_engine.js';
 
 let failed = 0, passed = 0;
 

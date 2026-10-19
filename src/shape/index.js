@@ -4,11 +4,11 @@ import { parse, build, pick } from './_engine.js';
 const NS = 'http://www.w3.org/2000/svg';
 const CALLBACKS = ['before_init', 'on_init', 'on_draw'];
 
-// Фигуры с вырезанными углами по путям из Figma. Внутрь элемента первым ребёнком кладётся
-// <svg class="cut-shape"><path/></svg> — фон и обводка (цвета задаёт CSS, st-style [cut]), — а сам
+// Фигуры по путям из Figma: углы сохраняют размер, прямые тянутся. Внутрь элемента первым ребёнком кладётся
+// <svg class="shape-layer"><path/></svg> — фон и обводка (цвета задаёт CSS, st-style [shape]), — а сам
 // элемент клипается тем же путём. Форма пересчитывается при смене размера элемента, брейкпоинта
 // и атрибутов.
-export default class Cut {
+export default class Shape {
 
     static #CONFIG = ['target'];
 
@@ -31,14 +31,14 @@ export default class Cut {
     get elements() { return [...this.#shapes.keys()]; }
 
     clone(params) {
-        return new Cut({ ...this.#params, ...this.#methods, ...params, parent: this });
+        return new Shape({ ...this.#params, ...this.#methods, ...params, parent: this });
     }
 
     constructor(params) {
         params = {
-            target: '[cut]',
-            attribute: 'cut',
-            // Шкала st-style по умолчанию: фигура для брейкпоинта — атрибут cut-<ключ>, действует от min и шире.
+            target: '[shape]',
+            attribute: 'shape',
+            // Шкала st-style по умолчанию: фигура для брейкпоинта — атрибут shape-<ключ>, действует от min и шире.
             breakpoints: { xs: 360, sm: 576, md: 768, lp: 1024, lg: 1280, dt: 1536, xl: 1920 },
             // px макета в 1rem: координаты переводятся в rem и масштабируются вместе с вёрсткой.
             // 0 — без масштаба, 1px макета = 1px экрана.
@@ -48,7 +48,7 @@ export default class Cut {
         };
 
         for (let [key, value] of Object.entries(params))
-            if (typeof value == 'function' && !Cut.#CONFIG.includes(key)) {
+            if (typeof value == 'function' && !Shape.#CONFIG.includes(key)) {
                 this[key] = value.bind(this);
                 this.#methods[key] = value;
             } else
@@ -73,13 +73,13 @@ export default class Cut {
     #bind(el) {
         if (this.#shapes.has(el)) return;
         let owner = find(el);
-        if (owner instanceof Cut && owner !== this) return;
+        if (owner instanceof Shape && owner !== this) return;
 
         own(el, this);
 
         let svg = document.createElementNS(NS, 'svg');
         let path = document.createElementNS(NS, 'path');
-        svg.classList.add('cut-shape');
+        svg.classList.add('shape-layer');
         svg.setAttribute('aria-hidden', 'true');
         svg.setAttribute('preserveAspectRatio', 'none');
         svg.append(path);
