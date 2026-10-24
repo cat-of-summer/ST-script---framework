@@ -137,8 +137,17 @@ export default class Shape {
     }
 
     // Перечитать атрибуты и перерисовать; новые элементы под target — взять под управление.
+    // Элементы, ушедшие из DOM (их перерисовал App, Vue и т. п.), отпускаются.
     refresh(target = this.#params.target) {
+        for (let el of this.elements.filter(el => !el.isConnected)) {
+            this.#ro.unobserve(el);
+            this.#pending.delete(el);
+            this.#shapes.delete(el);
+            disown(el, this);
+        }
+
         for (let el of elements(target)) {
+            if (!el.isConnected) continue;
             if (!this.#shapes.has(el)) { this.#bind(el); continue; }
             this.#read(el);
             this.#draw(el);

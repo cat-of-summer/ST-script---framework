@@ -1,4 +1,4 @@
-import { disown, elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
+import { disown, elements, expose, find, linked, own, rescannable } from '../_traits/hasInstanceSymbol.js';
 
 export default class Validator {
 
@@ -8,6 +8,8 @@ export default class Validator {
     #methods = {};
     #elements = [];
     #abort = new AbortController();
+    // Подписки каждого поля: refresh() снимает ушедшее из DOM.
+    #listeners = new WeakMap();
 
     static find = find;
 
@@ -85,7 +87,8 @@ export default class Validator {
             reset: () => this.reset(el)
         });
 
-        let signal = this.#abort.signal;
+        let listeners = linked(this.#abort.signal), signal = listeners.signal;
+        this.#listeners.set(el, listeners);
 
         for (let event of this.#params.events)
             el.addEventListener(event, () => this.#check(el), { signal });
@@ -97,6 +100,21 @@ export default class Validator {
             ?.addEventListener('reset', () => queueMicrotask(() => this.reset(el)), { signal });
 
         this.#sync(el);
+    }
+
+    // Пересканировать target (селектор или функция): отпустить поля, ушедшие из DOM, и
+    // привязать новые. Для полей, которые перерисовывает App, Vue и т. п.
+    refresh() {
+        for (let el of this.#elements.filter(el => !el.isConnected)) {
+            this.#listeners.get(el)?.abort();
+            disown(el, this, ['check', 'reset']);
+        }
+        this.#elements = this.#elements.filter(el => el.isConnected);
+
+        if (rescannable(this.#params.target))
+            for (let el of elements(this.#params.target))
+                if (!find(el)) this.#bind(el);
+        return this;
     }
 
     // Разобрать: снять обработчики (в том числе reset на форме), state и customValidity

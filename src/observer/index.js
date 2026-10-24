@@ -1,4 +1,4 @@
-import { element, elements, find, own } from '../_traits/hasInstanceSymbol.js';
+import { element, elements, find, own, rescannable } from '../_traits/hasInstanceSymbol.js';
 import { parse_zone, measure, state_of, progress_of, intersects, steps } from './_engine.js';
 
 const CALLBACKS = ['before_init', 'on_init', 'on_enter', 'on_leave', 'on_progress', 'on_cross', 'on_uncross'];
@@ -82,7 +82,7 @@ export default class Observer {
         this.#ro = new ResizeObserver(this.#schedule);
         this.#ro.observe(this.#root ?? document.documentElement);
 
-        if (this.#params.live && typeof this.#params.target == 'string') {
+        if (this.#params.live && rescannable(this.#params.target)) {
             let pending = false;
             this.#mo = new MutationObserver(records => {
                 if (pending || !records.some(r => [...r.addedNodes, ...r.removedNodes].some(n => n instanceof Element)))
@@ -120,7 +120,7 @@ export default class Observer {
     // Отпущенные через once / unobserve при пересканировании не берутся заново
     refresh() {
         for (let el of this.#states.keys()) if (!el.isConnected) this.#release(el);
-        if (typeof this.#params.target == 'string')
+        if (rescannable(this.#params.target))
             for (let el of elements(this.#params.target)) if (!this.#done.has(el)) this.#bind(el);
         this.#goals = elements(this.#params.cross);
         for (let st of this.#states.values()) st.dirty = true;

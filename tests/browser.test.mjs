@@ -1,4 +1,4 @@
-// Браузерные автотесты App, Modal, Uploader, Core, Cookie, Route, Shape, app/datepicker и destroy() модулей: node tests/browser.test.mjs
+// Браузерные автотесты App, Modal, Uploader, Core, Cookie, Route, Shape, Loader, app/datepicker, destroy() и refresh() модулей: node tests/browser.test.mjs
 // Нужен Playwright: стоит не в репозитории — путь к нему в PLAYWRIGHT_FROM (README, раздел Tests).
 // Браузер — BROWSER=chromium (по умолчанию) | firefox | webkit; ONLY=подстрока имени — часть тестов.
 // Модули грузятся из dist/ (IIFE-сборки), поэтому перед прогоном нужен npm run build.
@@ -1778,6 +1778,324 @@ await test('datepicker: inline, reset формы, value из кода', async ()
     await page.evaluate(() => { document.querySelector('#single').value = '2026-03-08'; });
     await page.waitForFunction(() => document.querySelector('#d').value == '08.03.2026');
     eq(await page.evaluate(() => document.querySelector('#single .datepicker__caption').textContent), 'Март 2026', 'value из кода перерисовывает');
+    await page.close();
+});
+
+// ---------------------------------------------------------------------------
+// Обратная связь 1.5.0: опции App.create, #attr, #model с массивами, #key по объекту,
+// updated и refresh() модулей в динамическом DOM
+// ---------------------------------------------------------------------------
+
+await test('App.create: зарезервированная опция не того типа — ошибка с подсказкой', async () => {
+    let page = await open(``);
+    let result = await page.evaluate(() => {
+        let error = config => { try { App.create(config); return null; } catch (e) { return [e.name, e.message]; } };
+        App.create({ app: 'base', template: '<p></p>' });
+        return [
+            error({ app: 'routes', events: [] }),
+            error({ app: 'h', helpers: 'x' }),
+            error({ app: 's', setup: {} }),
+            error({ app: 'ok', events: { click() {} }, helpers: {}, template: '', setup() {} }),
+            (() => { try { App.extend('base', { app: 'ext', events: [] }); return null; } catch (e) { return e.name; } })(),
+        ];
+    });
+    eq(result, [
+        ['TypeError', 'App.create("routes"): "events" - обработчики { имя: функция }, получен массив. Если это данные, переименуйте поле'],
+        ['TypeError', 'App.create("h"): "helpers" - объект { имя: значение }, получен string. Если это данные, переименуйте поле'],
+        ['TypeError', 'App.create("s"): "setup" - функция, получен object. Если это данные, переименуйте поле'],
+        null,
+        'TypeError',
+    ], 'массив в events, строка в helpers, объект в setup; верный конфиг проходит; extend проверяется');
+    await page.close();
+});
+
+await test('Предупреждение о свойстве с именем опции — подсказка переименовать', async () => {
+    let page = await open(`<st-app app="w"><p>{{ events }}</p></st-app>`);
+    await page.evaluate(async () => {
+        App.create({ app: 'w', setup() { this.events = [1]; } });
+        await new Promise(r => setTimeout(r, 100));
+    });
+    eq(page.errors.filter(e => e.includes('"events" занято опцией App.create')).length, 1, 'причина в тексте предупреждения');
+    await page.close();
+});
+
+await test('#attr: объект и #attr.имя, булевы, aria, живое свойство, снятие', async () => {
+    let page = await open(`<st-app app="t">
+        <button id="b" #attr="{ disabled: busy, 'aria-selected': on, title: hint }">b</button>
+        <input id="c" type="checkbox" #attr.checked="on">
+        <i id="x" #attr="extra"></i>
+        <svg id="s" #attr="{ viewBox: box }"></svg></st-app>`);
+    let read = () => page.evaluate(() => {
+        let b = document.querySelector('#b'), c = document.querySelector('#c');
+        return [b.hasAttribute('disabled'), b.getAttribute('aria-selected'), b.getAttribute('title'), c.checked,
+            document.querySelector('#x').getAttribute('data-x'), document.querySelector('#s').getAttribute('viewBox')];
+    });
+    await page.evaluate(() => App.create({ app: 't', busy: true, on: false, hint: 'h', extra: { 'data-x': 1 }, box: '0 0 10 10' }));
+    await tick(page);
+    eq(await read(), [true, 'false', 'h', false, '1', '0 0 10 10'], 'начальные значения; aria false — строкой; регистр имени у svg сохранён');
+    await page.click('#c');
+    await page.evaluate(async () => {
+        let app = document.querySelector('st-app');
+        app.on = true; await app.nextTick();
+        app.on = false; app.busy = false; app.hint = null; app.extra = {};
+        await app.nextTick();
+    });
+    eq(await read(), [false, 'false', null, false, null, '0 0 10 10'], 'после клика пользователя checked следует за данными; null и пропавшее имя снимают атрибут');
+    eq(page.errors, [], 'без ошибок');
+    await page.close();
+});
+
+await test('#model: select multiple — массив, опции из #for', async () => {
+    let page = await open(`<st-app app="t"><select id="m" multiple #model="picked"><option #for="o in opts" value="{{ o }}">{{ o }}</option></select></st-app>`);
+    await page.evaluate(() => App.create({ app: 't', opts: ['a', 'b', 'c'], picked: ['b', 'c'] }));
+    await tick(page);
+    let selected = () => page.$eval('#m', s => [...s.selectedOptions].map(o => o.value));
+    eq(await selected(), ['b', 'c'], 'выбор из массива после отрисовки опций');
+    await page.evaluate(() => document.querySelector('st-app').opts.push('d'));
+    await tick(page);
+    eq(await selected(), ['b', 'c'], 'выбор держится после перерисовки опций');
+    await page.selectOption('#m', ['a', 'd']);
+    await tick(page);
+    eq(await page.evaluate(() => App.snapshot(document.querySelector('st-app').picked)), ['a', 'd'], 'выбор пользователя — массив');
+    await page.close();
+});
+
+await test('#model: группа чекбоксов — массив значений, одиночный остаётся boolean', async () => {
+    let page = await open(`<st-app app="t"><input #for="v in all" type="checkbox" class="g" value="{{ v }}" #model="tags"><input id="one" type="checkbox" #model="agree"></st-app>`);
+    await page.evaluate(() => App.create({ app: 't', all: ['x', 'y', 'z'], tags: ['y'], agree: false }));
+    await tick(page);
+    let checked = () => page.$$eval('.g', n => n.map(e => e.checked));
+    eq(await checked(), [false, true, false], 'отмечены значения из массива');
+    await page.click('.g >> nth=0');
+    await page.click('.g >> nth=1');
+    await page.click('#one');
+    await tick(page);
+    let app = await page.evaluate(() => { let a = document.querySelector('st-app'); return [App.snapshot(a.tags), a.agree]; });
+    eq([await checked(), ...app], [[true, false, false], ['x'], true], 'клики меняют массив; одиночный флажок — boolean');
+    await page.close();
+});
+
+await test('#key по объекту: строки без id переносятся при сортировке', async () => {
+    let page = await open(`<st-app app="t"><div><input #for="row in rows" #key="row" class="r" #model="row.name"></div></st-app>`);
+    await page.evaluate(() => App.create({ app: 't', rows: [{ name: 'a' }, { name: 'b' }, { name: 'c' }] }));
+    await tick(page);
+    await page.focus('.r >> nth=0');
+    await page.keyboard.type('!');
+    let result = await page.evaluate(async () => {
+        let app = document.querySelector('st-app');
+        let before = [...document.querySelectorAll('.r')];
+        app.rows.reverse();
+        app.rows.push({ name: 'new' });
+        await new Promise(r => setTimeout(r, 30));
+        let after = [...document.querySelectorAll('.r')];
+        return [after[2] === before[0], after[0] === before[2], after.map(e => e.value), document.activeElement === before[0]];
+    });
+    eq(result, [true, true, ['c', 'b', 'a!', 'new'], true], 'те же узлы, фокус на месте, новая строка без ключа-поля');
+    eq(page.errors, [], 'без предупреждений о дублях');
+    await page.close();
+});
+
+await test('метод в {{ }} перерисовывается по реактивным полям, которые читает', async () => {
+    let page = await open(`<st-app app="t"><b id="o">{{ shown('rules') }}</b></st-app>`);
+    await page.evaluate(() => App.create({ app: 't', query: '', rules: ['ab', 'bc'], shown(key) { return this[key].filter(r => r.includes(this.query)).join(','); } }));
+    await tick(page);
+    let first = await page.textContent('#o');
+    await page.evaluate(() => { document.querySelector('st-app').query = 'c'; });
+    await tick(page);
+    eq([first, await page.textContent('#o')], ['ab,bc', 'bc'], 'изменение query перерисовывает вызов');
+    await page.close();
+});
+
+await test('updated: после прохода перерисовки, не до rendered', async () => {
+    let page = await open(`<st-app app="t"><b>{{ n }}</b></st-app>`);
+    let result = await page.evaluate(async () => {
+        let events = [];
+        App.create({ app: 't', n: 0, events: { rendered() { events.push('rendered'); }, updated() { events.push('updated:' + this.querySelector('b').textContent); } } });
+        await new Promise(r => setTimeout(r, 100));
+        let app = document.querySelector('st-app');
+        app.n = 1; app.n = 2;
+        await new Promise(r => setTimeout(r, 30));
+        return events;
+    });
+    eq(result, ['rendered', 'updated:2'], 'одно updated на пачку изменений, DOM уже новый');
+    await page.close();
+});
+
+await test('Toggle: aria-selected у role="tab", aria-expanded из разметки', async () => {
+    let page = await open(`<div role="tablist"><button id="a" role="tab" trigger target="#pa">a</button><button id="b" role="tab" trigger target="#pb">b</button></div>
+        <div id="pa"></div><div id="pb"></div><button id="acc" aria-expanded="false" class="acc" target="#body">acc</button><div id="body"></div>`, ['toggle']);
+    let result = await page.evaluate(async () => {
+        new Toggle({ trigger: '[role=tab]', group: 'radio' });
+        new Toggle({ trigger: '.acc' });
+        let aria = () => ['#a', '#b'].map(s => document.querySelector(s).getAttribute('aria-selected')).concat(document.querySelector('#acc').getAttribute('aria-expanded'));
+        let start = aria();
+        document.querySelector('#b').click();
+        document.querySelector('#acc').click();
+        let after = aria();
+        await until(() => document.querySelector('#body').getAttribute('state') == 'active');
+        document.querySelector('#acc').click();
+        return [start, after, aria(), document.querySelector('#a').hasAttribute('tabindex')];
+    });
+    eq(result, [['false', 'false', 'false'], ['false', 'true', 'true'], ['false', 'true', 'false'], false], 'aria сразу при переключении, tabindex не трогается');
+    await page.close();
+});
+
+await test('Toggle anchor: target — в hash id панели, ссылка на панель открывает вкладку', async () => {
+    let page = await open(`<button id="ta" trigger target="#pa">a</button><button id="tb" trigger target="#pb">b</button><div id="pa"></div><div id="pb"></div>`, ['toggle'], '/#pb');
+    let result = await page.evaluate(async () => {
+        let toggle = new Toggle({ group: 'radio', anchor: 'target', keep_history: true });
+        await until(() => document.querySelector('#tb').getAttribute('state') == 'active');
+        let opened = document.querySelector('#tb').getAttribute('state');
+        document.querySelector('#ta').click();
+        return [opened, location.hash, toggle.params.anchor];
+    });
+    eq(result, ['active', '#pa', 'target'], 'загрузка с #pb, клик пишет #pa; keep_history не затирает target');
+    await page.close();
+});
+
+await test('Toggle.refresh: вкладки из #for внутри <st-app>', async () => {
+    let page = await open(`<st-app app="tabs"><div><button #for="t in tabs" #key="t" role="tab" class="tab" target="#p-{{ t }}">{{ t }}</button></div>
+        <section #for="t in tabs" #key="t" id="p-{{ t }}" class="panel">{{ t }}</section></st-app>`, ['app', 'toggle'], '/#p-b');
+    let result = await page.evaluate(async () => {
+        let wait = () => new Promise(r => setTimeout(r, 50));
+        let app = document.querySelector('st-app');
+        // Toggle создан раньше, чем отрисовались вкладки: триггеры — функцией.
+        let toggle = new Toggle({ trigger: () => app.querySelectorAll('.tab'), group: 'radio', anchor: 'target' });
+        app.addEventListener('updated', () => toggle.refresh());
+        app.addEventListener('rendered', () => toggle.refresh());
+        App.create({ app: 'tabs', tabs: ['a', 'b'] });
+        await until(() => app.querySelector('.tab'));
+        await wait();
+        let fromHash = document.querySelector('#p-b').getAttribute('state');
+        app.tabs.push('c');
+        await wait();
+        app.querySelectorAll('.tab')[2].click();
+        await wait();
+        let afterNew = [...app.querySelectorAll('.tab')].map(t => t.getAttribute('aria-selected'));
+        let hash = location.hash;
+        app.tabs.splice(0, 1);
+        await wait();
+        app.querySelectorAll('.tab')[0].click();
+        await wait();
+        return [fromHash, afterNew, hash, [...app.querySelectorAll('.tab')].map(t => t.getAttribute('aria-selected')), location.hash];
+    });
+    eq(result, [
+        'active',
+        ['false', 'false', 'true'],
+        '#p-c',
+        ['true', 'false'],
+        '#p-b',
+    ], 'вкладка из hash после отрисовки, новая вкладка работает, удалённая отпущена');
+    eq(page.errors, [], 'без ошибок');
+    await page.close();
+});
+
+await test('Modal.refresh: триггер, появившийся после создания окна', async () => {
+    let page = await open(`<div id="host"></div>`, ['modal']);
+    let state = await page.evaluate(async () => {
+        let m = new Modal({ content: '<div></div>', trigger: '.open' });
+        document.querySelector('#host').innerHTML = '<button class="open">o</button>';
+        m.refresh().refresh();
+        document.querySelector('.open').click();
+        await until(() => m.state === 'shown');
+        return m.state;
+    });
+    eq(state, 'shown', 'новый триггер открывает окно, повторный refresh не дублирует');
+    await page.close();
+});
+
+await test('Mask.refresh и Validator.refresh: новые поля привязаны, ушедшие отпущены', async () => {
+    let page = await open(`<form id="f"><input class="m" required></form>`, ['mask', 'validator']);
+    let result = await page.evaluate(() => {
+        let form = document.querySelector('#f');
+        let mask = new Mask({ target: '.m', mask: '00-00' });
+        let validator = new Validator({ target: '.m' });
+        let first = form.querySelector('.m');
+        form.insertAdjacentHTML('beforeend', '<input class="m" required>');
+        first.remove();
+        mask.refresh(); validator.refresh();
+        let fresh = form.querySelector('.m');
+        fresh.value = '1234';
+        fresh.dispatchEvent(new Event('input', { bubbles: true }));
+        return [mask.value, validator.valid.length, typeof fresh.raw, typeof fresh.check, typeof first.raw, typeof first.check];
+    });
+    eq(result, [['12-34'], 1, 'function', 'function', 'undefined', 'undefined'], 'маска и проверка на новом поле, старое отпущено');
+    eq(page.errors, [], 'без ошибок');
+    await page.close();
+});
+
+await test('Select.refresh без аргумента: новые select подняты, ушедшие отпущены', async () => {
+    let page = await open(`<div id="host"><select class="s"><option>a</option></select></div>`, ['select']);
+    let result = await page.evaluate(() => {
+        let select = new Select({ target: '.s' });
+        let host = document.querySelector('#host');
+        host.replaceChildren();
+        host.insertAdjacentHTML('beforeend', '<select class="s"><option>b</option></select>');
+        select.refresh();
+        return [document.querySelectorAll('select-container').length, select.value, document.querySelector('select-trigger').textContent];
+    });
+    eq(result, [1, ['b'], 'b'], 'новый select обёрнут');
+    eq(page.errors, [], 'без ошибок');
+    await page.close();
+});
+
+await test('Shape.refresh отпускает элементы, ушедшие из DOM', async () => {
+    let page = await open(`<div id="host"><div class="c" style="width:100px;height:100px" shape="100 100 | M0 0H100V100H0Z"></div></div>`, ['shape']);
+    let result = await page.evaluate(() => {
+        let shape = new Shape({ target: '.c', scale: 0 });
+        document.querySelector('#host').innerHTML = '<div class="c" style="width:100px;height:100px" shape="100 100 | M0 0H100V100H0Z"></div>';
+        shape.refresh();
+        return [shape.elements.length, shape.elements[0] === document.querySelector('.c'), !!document.querySelector('.c .shape-layer')];
+    });
+    eq(result, [1, true, true], 'в работе только новый элемент');
+    await page.close();
+});
+
+await test('Uploader.refresh: новый корень поднят, ушедший отпущен', async () => {
+    let root = `<div class="u"><div files-list></div><template entry><div file-item><span filename></span></div></template><button type="button" add-button>+</button></div>`;
+    let page = await open(`<div id="host">${root}</div>`, ['uploader']);
+    let result = await page.evaluate(root => {
+        let uploader = new Uploader({ target: '.u', input_name: 'docs' });
+        let old = document.querySelector('.u');
+        document.querySelector('#host').innerHTML = root;
+        uploader.refresh();
+        let fresh = document.querySelector('.u');
+        return [Uploader.find(old) === undefined, Uploader.find(fresh) === uploader, fresh.querySelectorAll('input[type=file]').length];
+    }, root);
+    eq(result, [true, true, 1], 'корни сменились, у нового своё поле выбора');
+    eq(page.errors, [], 'без ошибок');
+    await page.close();
+});
+
+await test('Typograf и Observer: target функцией пересканируется в refresh()', async () => {
+    let page = await open(`<div id="host"><p class="t">a</p></div>`, ['typograf', 'observer']);
+    let result = await page.evaluate(() => {
+        let host = document.querySelector('#host');
+        let typograf = new Typograf({ target: () => host.querySelectorAll('.t'), lazy: false });
+        let observer = new Observer({ target: () => host.querySelectorAll('.t') });
+        let before = [typograf.elements.length, observer.elements.length];
+        host.innerHTML = '<p class="t">b</p><p class="t">c</p>';
+        typograf.refresh();
+        observer.refresh();
+        return [before, typograf.elements.length, observer.elements.length, typograf.elements.every(el => el.isConnected)];
+    });
+    eq(result, [[1, 1], 2, 2, true], 'новые элементы взяты, ушедшие отпущены');
+    eq(page.errors, [], 'без ошибок');
+    await page.close();
+});
+
+await test('Loader.refresh: контейнер заново по target', async () => {
+    let page = await open(`<div id="host"><div class="box"></div></div>`, ['loader']);
+    let result = await page.evaluate(() => {
+        let host = document.querySelector('#host');
+        let loader = new Loader({ target: () => host.querySelector('.box') });
+        let old = loader.target;
+        host.innerHTML = '<div class="box"></div>';
+        loader.refresh();
+        return [old !== loader.target, loader.target === host.querySelector('.box'), Loader.find(loader.target) === loader, Loader.find(old) === undefined];
+    });
+    eq(result, [true, true, true, true], 'загрузка пойдёт в новый контейнер');
+    eq(page.errors, [], 'без ошибок');
     await page.close();
 });
 

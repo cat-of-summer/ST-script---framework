@@ -85,15 +85,61 @@ Core.download(JSON.stringify(data), 'export.json', 'application/json');
 | `method` | `'GET'` | HTTP-метод (приводится к верхнему регистру) |
 | `data` | `null` | Тело запроса: объект, `FormData` или `HTMLFormElement` |
 | `headers` | `{}` | Заголовки запроса |
-| `timeout` | `0` | Таймаут в мс (`0` — без таймаута) |
+| `timeout` | `0` | Таймаут в мс (`0` - без таймаута) |
 | `response_type` | `''` | `responseType` для XHR (`'json'`, `'blob'` и т.п.) |
+| `encode` | `''` | `'form'` - объект в `data` отправляется формой с PHP-нотацией вложенности, см. ниже |
+| `form_bool` | `['1', '0']` | Как кодировать `true` и `false` при `encode: 'form'`; для Bitrix - `['Y', 'N']` |
 
 **Обработка тела (`data`):**
 
-- `FormData` — отправляется как есть.
-- `HTMLFormElement` — `url`/`method` подхватываются из атрибутов формы, тело собирается в `FormData`.
-- Обычный объект при `GET` — сериализуется в query-строку, тело становится `null`.
-- Обычный объект при остальных методах — отправляется как JSON; если `Content-Type` не задан, выставляется `application/json`.
+- `FormData` - отправляется как есть.
+- `HTMLFormElement` - `url`/`method` подхватываются из атрибутов формы, тело собирается в `FormData`.
+- Обычный объект при `GET` - сериализуется в query-строку `ключ=значение`, тело становится `null`. Массив превращается в строку через запятую (`a=1,2`), вложенный объект не раскладывается.
+- Обычный объект при остальных методах - отправляется как JSON; если `Content-Type` не задан, выставляется `application/json`.
+
+**`encode: 'form'` - бэкенд ждёт форму, а не JSON** (`$_POST` в PHP, Bitrix). Объект раскладывается в пары, как их собрал бы PHP из полей формы:
+
+```js
+Core.fetch({
+    url: '/ajax/rules.php',
+    method: 'POST',
+    encode: 'form',
+    form_bool: ['Y', 'N'],
+    data: { RULES: [{ FROM: 'a', ACTIVE: true }], DRIVERS: ['smtp', 'log'] },
+});
+// RULES[0][FROM]=a  RULES[0][ACTIVE]=Y  DRIVERS[]=smtp  DRIVERS[]=log
+```
+
+- Вложенные объекты и массивы объектов получают индексы (`RULES[0][FROM]`), массив примитивов - `[]` (`DRIVERS[]`).
+- `true`/`false` - по `form_bool`, `null` - пустая строка, `undefined` пропускается, `Date` - `toISOString()`, `File` и `Blob` идут как есть.
+- Пустой массив не отправляется: в форме его не выразить, PHP не увидит ключ.
+- При `POST` и других методах с телом получается `FormData`, при `GET` - query-строка с той же нотацией.
+- `FormData` и форма при `encode: 'form'` отправляются как есть.
+
+### `Core.fetch.with(defaults)`
+
+Настроенный `Core.fetch`: база API, постоянные заголовки и поля (`sessid` в Bitrix) без обёртки вокруг каждого вызова. Возвращает функцию с той же сигнатурой, что `Core.fetch`.
+
+```js
+const api = Core.fetch.with({
+    base: '/bitrix/services/main/ajax.php/',
+    method: 'POST',
+    encode: 'form',
+    form_bool: ['Y', 'N'],
+    data: { sessid: BX.bitrix_sessid() },
+    on_failed: ({ status }) => status == 401 && location.reload(),
+});
+
+api({ url: 'rules.save', data: { RULES: rows } }).then(({ data }) => …);
+```
+
+- `base` разрешает непустой `url` по правилам ссылок: `'rules.save'` → `…/ajax.php/rules.save`, `'/other'` - от корня сайта, полный адрес - как есть. Пустой `url` по-прежнему означает текущую страницу.
+- `headers` сливаются, заголовки вызова перекрывают заголовки по умолчанию.
+- `data` по умолчанию дописывается: в объект - полями, которых в нём нет; в `FormData` и форму - ключами, которых нет (исходная `FormData` не меняется). Без `data` в вызове уходят поля по умолчанию. Строка в `data` отправляется как есть.
+- Колбэки по умолчанию выполняются первыми, затем колбэки вызова.
+- Остальные параметры вызова перекрывают параметры по умолчанию.
+
+Настройки действуют только на вызовы через `api`. Глобального состояния нет: модули, которые сами вызывают `Core.fetch` (Loader, app/form), их не получают.
 
 **Разбор ответа** — одинаковый для успеха и ошибки: `data` в `on_success`/`on_complete` и `response` в `on_failed` получаются одним и тем же способом.
 

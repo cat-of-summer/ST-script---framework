@@ -11,9 +11,11 @@ export const element = (param) => {
 };
 
 // Множество существующих элементов: Element | NodeList | HTMLCollection | Array |
-// CSS-селектор → Array<Element>. Без побочных эффектов (несовпадение → []).
+// CSS-селектор | функция, возвращающая одно из них → Array<Element>. Без побочных эффектов
+// (несовпадение → []). Селектор и функцию refresh() модулей пересчитывает заново.
 export const elements = (param) => {
     if (param == null) return [];
+    if (typeof param == 'function') return elements(param());
     if (param instanceof Element) return [param];
     if (param instanceof NodeList || param instanceof HTMLCollection) return [...param];
     if (Array.isArray(param)) return param.flatMap(elements);
@@ -23,6 +25,17 @@ export const elements = (param) => {
     } catch {
         return [];
     }
+};
+
+// Можно ли пересканировать параметр в refresh(): готовый список элементов — нельзя.
+export const rescannable = (param) => typeof param == 'string' || typeof param == 'function';
+
+// Подписки одного элемента: обрываются вместе с общим сигналом экземпляра (destroy) и
+// отдельно — refresh() отпускает элемент, ушедший из DOM, со слушателями на его форме.
+export const linked = (signal) => {
+    let controller = new AbortController();
+    signal.addEventListener('abort', () => controller.abort(), { once: true, signal: controller.signal });
+    return controller;
 };
 
 export const find = (param) => element(param)?.[instance];

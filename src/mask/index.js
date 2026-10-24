@@ -1,4 +1,4 @@
-import { disown, element, elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
+import { disown, element, elements, expose, find, linked, own, rescannable } from '../_traits/hasInstanceSymbol.js';
 import { build, run, run_all, render, caret_for, cap, prepare } from './_engine.js';
 import { spans, type_ahead, settle, step, in_range } from './_groups.js';
 
@@ -40,6 +40,8 @@ export default class Mask {
     #states = new WeakMap();
     #inputs = [];
     #abort = new AbortController();
+    // Подписки каждого поля: refresh() снимает ушедшее из DOM.
+    #listeners = new WeakMap();
 
     static find = find;
 
@@ -135,6 +137,22 @@ export default class Mask {
         this.#inputs = [];
     }
 
+    // Пересканировать target (селектор или функция): отпустить поля, ушедшие из DOM, и
+    // привязать новые. Для полей, которые перерисовывает App, Vue и т. п.
+    refresh() {
+        for (let input of this.#inputs.filter(input => !input.isConnected)) {
+            this.#listeners.get(input)?.abort();
+            this.#states.delete(input);
+            disown(input, this, ['raw', 'state', 'set', 'clear', 'set_mask']);
+        }
+        this.#inputs = this.#inputs.filter(input => input.isConnected);
+
+        if (rescannable(this.#params.target))
+            for (let input of elements(this.#params.target))
+                if (!find(input)) this.#bind(input);
+        return this;
+    }
+
     #only() {
         if (this.#inputs.length != 1)
             throw new Error(`Mask: маска привязана к ${this.#inputs.length} полям — укажите поле явно`);
@@ -186,7 +204,8 @@ export default class Mask {
         if (find(input)) throw new Error("Маска уже привязана к этому полю");
         own(input, this);
 
-        let signal = this.#abort.signal;
+        let listeners = linked(this.#abort.signal), signal = listeners.signal;
+        this.#listeners.set(input, listeners);
         // Что поле теряет при привязке — destroy() вернёт.
         let original = {
             type: input.type,

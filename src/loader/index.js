@@ -1,4 +1,4 @@
-import { element, find, own } from '../_traits/hasInstanceSymbol.js';
+import { disown, elements, find, own } from '../_traits/hasInstanceSymbol.js';
 import Core from '../core/index.js';
 
 export default class Loader {
@@ -60,10 +60,20 @@ export default class Loader {
 
         this.#config.before_init.call(this, this.#config);
 
-        this.target = element(this.#config.target);
-        if (this.target) own(this.target, this);
+        this.refresh();
 
         this.#config.on_init.call(this, this.#config);
+    }
+
+    // Найти контейнер заново по target (селектор или функция): прежний перерисовал App,
+    // Vue и т. п. Загрузка идёт в контейнер, найденный последним.
+    refresh() {
+        let target = elements(this.#config.target)[0] ?? null;
+        if (target !== this.target) {
+            if (this.target) disown(this.target, this);
+            this.target = own(target, this);
+        }
+        return this;
     }
 
     // тип ответа из распарсенных Core данных

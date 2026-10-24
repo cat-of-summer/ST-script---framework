@@ -1,4 +1,4 @@
-import { element, elements, find, own } from '../_traits/hasInstanceSymbol.js';
+import { element, elements, find, own, rescannable } from '../_traits/hasInstanceSymbol.js';
 import { RULES, glue, text } from './_engine.js';
 
 const CALLBACKS = ['before_init', 'on_init', 'on_apply'];
@@ -77,7 +77,7 @@ export default class Typograf {
         }, { root, rootMargin: '100%' });
 
         this.#mo = new MutationObserver(records => this.#mutated(records));
-        if (this.#params.live && typeof this.#params.target == 'string')
+        if (this.#params.live && rescannable(this.#params.target))
             this.#mo.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
 
         for (let el of elements(this.#params.target)) this.#bind(el);
@@ -122,7 +122,7 @@ export default class Typograf {
 
     #scan() {
         for (let el of this.#states.keys()) if (!el.isConnected) this.#release(el);
-        if (typeof this.#params.target == 'string')
+        if (rescannable(this.#params.target))
             for (let el of elements(this.#params.target)) if (!this.#done.has(el)) this.#bind(el);
     }
 

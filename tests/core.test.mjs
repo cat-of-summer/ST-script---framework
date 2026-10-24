@@ -16,6 +16,7 @@ function eq(actual, expected, label) {
 // ---------------------------------------------------------------------------
 
 let next = null; // { status, type, body } — ответ для следующего запроса
+let sent = null;  // последний запрос: { method, url, headers, body }
 
 class FakeXHR {
     responseType = '';
@@ -36,10 +37,11 @@ class FakeXHR {
         return this.#body;
     }
     getResponseHeader(name) { return name.toLowerCase() == 'content-type' ? this.#type : null }
-    setRequestHeader() {}
-    open() {}
+    setRequestHeader(name, value) { sent.headers[name] = value }
+    open(method, url) { sent = { method, url, headers: {}, body: null } }
     abort() {}
-    send() {
+    send(payload) {
+        sent.body = payload;
         const { status, type = null, body = '', network = false } = next;
         setTimeout(() => {
             this.readyState = 4;
@@ -121,6 +123,59 @@ eq(r.success, { a: 2 }, '200 при response_type json → xhr.response');
 r = await run({ network: true });
 eq(r.failed, { status: 0, response: '' }, 'сеть → status 0, пустое тело');
 eq(r.settled, 'reject', 'сеть → reject');
+
+// ---------------------------------------------------------------------------
+// encode: 'form' — PHP-нотация; без encode — как раньше
+// ---------------------------------------------------------------------------
+
+const ok = { status: 200, type: 'text/plain', body: '' };
+const entries = body => [...body].map(([k, v]) => [k, v instanceof Blob ? 'blob' : v]);
+const data = { RULES: [{ FROM: 'a', ON: true }, { FROM: 'b', ON: false }], DRIVERS: ['x', 'y'], EMPTY: [], N: null, U: undefined, F: new Blob(['1']) };
+
+await run(ok, { method: 'POST', data, encode: 'form' });
+eq([sent.body instanceof FormData, entries(sent.body)], [true, [
+    ['RULES[0][FROM]', 'a'], ['RULES[0][ON]', '1'], ['RULES[1][FROM]', 'b'], ['RULES[1][ON]', '0'],
+    ['DRIVERS[]', 'x'], ['DRIVERS[]', 'y'], ['N', ''], ['F', 'blob'],
+]], 'encode form: POST → FormData с вложенностью, [] у примитивов, null → пусто');
+
+await run(ok, { method: 'POST', data: { A: true, B: false }, encode: 'form', form_bool: ['Y', 'N'] });
+eq(entries(sent.body), [['A', 'Y'], ['B', 'N']], 'form_bool: Y/N');
+
+await run(ok, { url: '/x?p=1', data: { a: [1, 2], o: { k: 'v' } }, encode: 'form' });
+eq(decodeURIComponent(sent.url), '/x?p=1&a[]=1&a[]=2&o[k]=v', 'encode form: GET → query с той же нотацией');
+
+await run(ok, { url: '/x', data: { a: [1, 2] } });
+eq(decodeURIComponent(sent.url), '/x?a=1,2', 'без encode GET как раньше');
+await run(ok, { method: 'POST', data: { a: 1 } });
+eq([sent.body, sent.headers['Content-Type']], ['{"a":1}', 'application/json'], 'без encode POST — JSON, как раньше');
+
+// ---------------------------------------------------------------------------
+// Core.fetch.with — база, заголовки, постоянные поля, колбэки
+// ---------------------------------------------------------------------------
+
+const order = [];
+const api = Core.fetch.with({
+    base: 'http://api.test/rest/', method: 'POST', encode: 'form', headers: { 'X-A': '1' },
+    data: { sessid: 's1', mode: 'def' }, on_success: () => order.push('default'),
+});
+
+next = ok;
+await api({ url: 'rules.save', data: { mode: 'own' }, headers: { 'X-B': '2' }, on_success: () => order.push('own') });
+eq([sent.method, sent.url, sent.headers, entries(sent.body), order],
+    ['POST', 'http://api.test/rest/rules.save', { 'X-A': '1', 'X-B': '2' }, [['sessid', 's1'], ['mode', 'own']], ['default', 'own']],
+    'with: base, слияние заголовков и data, колбэки по умолчанию первыми');
+
+const fd = new FormData();
+fd.append('mode', 'form');
+await api({ url: '/abs', data: fd });
+eq([sent.url, entries(sent.body), [...fd].length], ['http://api.test/abs', [['mode', 'form'], ['sessid', 's1']], 1],
+    'with: в FormData дописываются недостающие поля, исходная не меняется');
+
+await api({ url: 'list', method: 'GET' });
+eq(decodeURIComponent(sent.url), 'http://api.test/rest/list?sessid=s1&mode=def', 'with: GET без data — поля по умолчанию в query');
+
+await Core.fetch({ url: '/plain' });
+eq(sent.url, '/plain', 'обычный Core.fetch настройки with не получает');
 
 // ---------------------------------------------------------------------------
 // plural, escape

@@ -1,4 +1,4 @@
-import { disown, find, own } from '../_traits/hasInstanceSymbol.js';
+import { disown, elements, find, linked, own, rescannable } from '../_traits/hasInstanceSymbol.js';
 
 export default class Uploader {
     static find = find;
@@ -6,6 +6,10 @@ export default class Uploader {
     #targets = [];
     #pickers = [];
     #abort = new AbortController();
+    // Корень → его подписки и поле выбора: refresh() отпускает корень, ушедший из DOM.
+    #bound = new WeakMap();
+    #target = null;
+    #setup = null;
 
     // Убрать все файлы из всех загрузчиков этого экземпляра.
     clear() {
@@ -20,6 +24,24 @@ export default class Uploader {
         this.#targets.forEach(target => disown(target, this));
         this.#pickers = [];
         this.#targets = [];
+    }
+
+    // Пересканировать target (селектор или функция): отпустить корни, ушедшие из DOM, и
+    // поднять новые — их перерисовал App, Vue и т. п. Внутренность корня (записи, кнопки)
+    // ведёт сам Uploader, перерисовывать её снаружи нельзя.
+    refresh() {
+        for (let target of this.#targets.filter(target => !target.isConnected)) {
+            let { listeners, picker } = this.#bound.get(target);
+            listeners.abort();
+            this.#pickers = this.#pickers.filter(p => p !== picker);
+            disown(target, this);
+        }
+        this.#targets = this.#targets.filter(target => target.isConnected);
+
+        if (rescannable(this.#target))
+            for (let target of elements(this.#target))
+                if (!find(target)) this.#setup(target);
+        return this;
     }
 
     static formatSize(size) {
@@ -71,18 +93,16 @@ export default class Uploader {
         params.input_name = input_name + (params.limits.files != 1 ? '[]' : '');
         params.delete_name = (params.delete_name ? params.delete_name.replace(/\[\]$/, '')  : input_name + '_to_delete') + (params.limits.files != 1 ? '[]' : '');
 
-        // target — селектор, элемент или список элементов.
-        let targets = typeof params.target == 'string'
-            ? document.querySelectorAll(params.target)
-            : params.target instanceof Element ? [params.target] : Array.from(params.target ?? []);
+        // target — селектор, функция, элемент или список элементов.
+        this.#target = params.target;
 
-        targets.forEach(target => {
+        this.#setup = target => {
             if (find(target))
                 throw new Error("Already inited");
 
             own(target, this);
             this.#targets.push(target);
-            let signal = this.#abort.signal;
+            let listeners = linked(this.#abort.signal), signal = listeners.signal;
 
             // События на корне загрузчика, всплывают: uploader:add, uploader:delete, uploader:error.
             const emit = (name, detail, cancelable = false) => target.dispatchEvent(
@@ -90,7 +110,7 @@ export default class Uploader {
             );
 
             for (let [key, value] of Object.entries(params))
-                if (typeof value == "function")
+                if (typeof value == "function" && key != 'target')
                     target[key] = value.bind(target);
 
             target.before_init(params);
@@ -347,10 +367,13 @@ export default class Uploader {
 
             target.appendChild(picker);
             this.#pickers.push(picker);
+            this.#bound.set(target, { listeners, picker });
 
             target.querySelectorAll('*[add-button]').forEach(b => b.addEventListener('click', () => picker.click(), { signal }));
 
             target.on_init(params);
-        });
+        };
+
+        elements(params.target).forEach(this.#setup);
     }
 }

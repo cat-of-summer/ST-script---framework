@@ -1,4 +1,4 @@
-import { disown, elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
+import { disown, elements, expose, find, linked, own, rescannable } from '../_traits/hasInstanceSymbol.js';
 
 
 export default class Select {
@@ -9,6 +9,8 @@ export default class Select {
     // select → его контейнер и исходный style: для refresh() и destroy().
     #built = new Map();
     #abort = new AbortController();
+    // Подписки каждого select (и клик мимо на document): refresh() снимает ушедший из DOM.
+    #listeners = new WeakMap();
 
     static find = find;
 
@@ -92,7 +94,8 @@ export default class Select {
             toggle: () => this.toggle(select)
         });
 
-        let signal = this.#abort.signal;
+        let listeners = linked(this.#abort.signal), signal = listeners.signal;
+        this.#listeners.set(select, listeners);
 
         let container = document.createElement('select-container');
         own(container, this);
@@ -155,8 +158,25 @@ export default class Select {
     }
 
     // Пересобрать пункты и текст триггера по нативному select: после смены <option> или
-    // значения из кода (select.value = …, v-model). Без аргумента — все свои select.
-    refresh(target = [...this.#built.keys()]) {
+    // значения из кода (select.value = …, v-model). Без аргумента — все свои select, а ещё
+    // отпустить ушедшие из DOM и поднять новые по target (селектор или функция): их
+    // перерисовал App, Vue и т. п.
+    refresh(target) {
+        if (target === undefined) {
+            for (let [select, { container }] of this.#built)
+                if (!select.isConnected) {
+                    this.#listeners.get(select)?.abort();
+                    clearTimeout(this.#timers.get(container));
+                    this.#built.delete(select);
+                    disown(select, this, ['open', 'close', 'toggle']);
+                }
+
+            target = [...this.#built.keys()];
+            if (rescannable(this.#params.target))
+                for (let select of elements(this.#params.target))
+                    if (!find(select)) this.#build(select);
+        }
+
         for (let select of elements(target)) {
             let built = this.#built.get(select);
             if (!built) continue;

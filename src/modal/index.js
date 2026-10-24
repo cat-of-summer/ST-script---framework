@@ -1,4 +1,4 @@
-import { closestInPath, disown, element, find, own } from '../_traits/hasInstanceSymbol.js';
+import { closestInPath, disown, element, elements, find, own } from '../_traits/hasInstanceSymbol.js';
 
 export default class Modal {
     modal;
@@ -25,6 +25,8 @@ export default class Modal {
     #teardown = null;
     #home = null;
     #destroyed = false;
+    // Триггеры с обработчиком клика: refresh() не привязывает их второй раз.
+    #triggers = new WeakSet();
 
     static find = find;
 
@@ -116,7 +118,7 @@ export default class Modal {
         let locked = false;
 
         for (let [key, value] of Object.entries(params))
-            if (typeof value == "function") {
+            if (typeof value == "function" && key != 'trigger') {
                 this[key] = value.bind(this);
 
                 this.#methods[key] = value;
@@ -404,12 +406,20 @@ export default class Modal {
         if (this.#params.close_by_esc)
             Modal.#bind_esc();
 
-        if (this.#params.trigger)
-            document.querySelectorAll(this.#params.trigger).forEach(trigger => {
-                trigger.addEventListener('click', () => this.show(trigger), { signal });
-            });
+        this.refresh();
 
         this.on_init(this.#params);
+    }
+
+    // Привязать триггеры, появившиеся после создания окна: их перерисовал App, Vue и т. п.
+    // Селектор и функция пересчитываются заново; ушедшие из DOM отпадают сами вместе с узлами.
+    refresh() {
+        for (let trigger of elements(this.#params.trigger)) {
+            if (this.#triggers.has(trigger)) continue;
+            this.#triggers.add(trigger);
+            trigger.addEventListener('click', () => this.show(trigger), { signal: this.#abort.signal });
+        }
+        return this;
     }
 
     // Разобрать окно: снять обработчики и таймеры, вернуть прокрутку страницы, если окно её

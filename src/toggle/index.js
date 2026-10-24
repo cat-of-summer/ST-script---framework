@@ -1,7 +1,8 @@
-import { disown, element, elements, expose, find, own } from '../_traits/hasInstanceSymbol.js';
+import { disown, element, elements, expose, find, own, rescannable } from '../_traits/hasInstanceSymbol.js';
 
 
 const active = el => ['active', 'activating'].includes(el.getAttribute('state'));
+const init = el => el.hasAttribute('state') || el.setAttribute('state', 'inactive');
 
 export default class Toggle {
 
@@ -11,6 +12,8 @@ export default class Toggle {
     #pending = new Set();
     #anchors = new Map();
     #triggers = [];
+    // Слушатели каждого триггера: refresh() снимает ушедший из DOM, не трогая остальных.
+    #listeners = new Map();
     #last = null;
     #abort = new AbortController();
     // Индикатор и триггер, за которым он следует (последний начавший активацию).
@@ -64,10 +67,10 @@ export default class Toggle {
             ...params
         };
 
-        if (params.keep_history) params.anchor = true;
+        if (params.keep_history) params.anchor ||= true;
 
         for (let [key, value] of Object.entries(params))
-            if (typeof value == "function" && key != 'target' && key != 'indicator') {
+            if (typeof value == "function" && key != 'trigger' && key != 'target' && key != 'indicator') {
                 this[key] = value.bind(this);
 
                 this.#methods[key] = value;
@@ -76,29 +79,10 @@ export default class Toggle {
 
         this.before_init(this.#params);
 
-        let init = el => el.hasAttribute('state') || el.setAttribute('state', 'inactive');
         let signal = this.#abort.signal;
 
-        for (let trigger of elements(this.#params.trigger)) {
-            own(trigger, this);
-            this.#triggers.push(trigger);
-            expose(trigger, {
-                toggle:     () => this.toggle(trigger),
-                activate:   () => this.activate(trigger),
-                deactivate: () => this.deactivate(trigger)
-            });
-            init(trigger);
-            this.#targets(trigger).forEach(init);
-
-            let id = this.#anchorId(trigger);
-            if (id) this.#anchors.set(id, trigger);
-
-            if (this.#params.action == 'hover') {
-                trigger.addEventListener('mouseenter', () => this.activate(trigger), { signal });
-                trigger.addEventListener('mouseleave', () => this.deactivate(trigger), { signal });
-            } else
-                trigger.addEventListener(this.#params.action, () => this.toggle(trigger), { signal });
-        }
+        for (let trigger of elements(this.#params.trigger))
+            this.#bind(trigger);
 
         let indicator = this.#params.indicator;
         this.#indicator = element(typeof indicator == 'function' ? indicator(this) : indicator) ?? null;
@@ -129,10 +113,69 @@ export default class Toggle {
         this.on_init(this.#params);
     }
 
+    #bind(trigger) {
+        own(trigger, this);
+        this.#triggers.push(trigger);
+        expose(trigger, {
+            toggle:     () => this.toggle(trigger),
+            activate:   () => this.activate(trigger),
+            deactivate: () => this.deactivate(trigger)
+        });
+        init(trigger);
+        this.#targets(trigger).forEach(init);
+        this.#aria(trigger, active(trigger));
+
+        let id = this.#anchorId(trigger);
+        if (id) this.#anchors.set(id, trigger);
+
+        let listeners = new AbortController(), signal = listeners.signal;
+        this.#listeners.set(trigger, listeners);
+
+        if (this.#params.action == 'hover') {
+            trigger.addEventListener('mouseenter', () => this.activate(trigger), { signal });
+            trigger.addEventListener('mouseleave', () => this.deactivate(trigger), { signal });
+        } else
+            trigger.addEventListener(this.#params.action, () => this.toggle(trigger), { signal });
+
+        this.#resize?.observe(trigger);
+    }
+
+    #unbind(trigger) {
+        this.#listeners.get(trigger)?.abort();
+        this.#listeners.delete(trigger);
+        this.#resize?.unobserve(trigger);
+        disown(trigger, this, ['toggle', 'activate', 'deactivate']);
+    }
+
+    // Пересканировать trigger (селектор или функция): ушедшие из DOM триггеры снять, новые
+    // привязать. Нужен, когда триггеры перерисовывает App, Vue и т. п.: о них Toggle не знает.
+    refresh() {
+        let gone = this.#triggers.filter(t => !t.isConnected);
+        gone.forEach(t => this.#unbind(t));
+        this.#triggers = this.#triggers.filter(t => t.isConnected);
+        for (let [id, t] of this.#anchors) if (!t.isConnected) this.#anchors.delete(id);
+        if (gone.includes(this.#last)) this.#last = null;
+
+        if (rescannable(this.#params.trigger))
+            for (let trigger of elements(this.#params.trigger))
+                if (!this.#triggers.includes(trigger)) this.#bind(trigger);
+
+        // Вкладки отрисовались после создания Toggle: таб из ссылки выбирается сейчас.
+        let linked = this.#params.anchor && this.#anchors.get(location.hash.slice(1));
+        if (linked && !active(linked)) this.#act(linked, true, true);
+
+        if (!this.#current?.isConnected)
+            this.#current = this.#triggers.filter(active).at(-1) ?? null;
+        this.#indicate(true);
+        return this;
+    }
+
     // Разобрать: снять обработчики (в том числе hashchange на window), таймеры переходов и
     // ResizeObserver. state на триггерах и целях и переменные индикатора остаются как есть.
     destroy() {
         this.#abort.abort();
+        this.#listeners.forEach(listeners => listeners.abort());
+        this.#listeners.clear();
         this.#resize?.disconnect();
         this.#resize = this.#deferred = this.#indicator = this.#current = null;
         this.#pending.forEach(clearTimeout);
@@ -151,12 +194,24 @@ export default class Toggle {
         return elements(target);
     }
 
+    // anchor: true или 'trigger' — в hash id триггера, иначе id единственной цели;
+    // 'target' — наоборот: ссылка ведёт на панель, а не на кнопку вкладки.
     #anchorId(trigger) {
-        if (!this.#params.anchor) return null;
-        if (trigger.id) return trigger.id;
+        let anchor = this.#params.anchor;
+        if (!anchor) return null;
 
-        let targets = this.#targets(trigger);
-        return targets.length === 1 && targets[0].id ? targets[0].id : null;
+        let target = () => {
+            let targets = this.#targets(trigger);
+            return targets.length === 1 && targets[0].id || null;
+        };
+        return anchor == 'target' ? target() || trigger.id || null : trigger.id || target();
+    }
+
+    // role="tab" — aria-selected; aria-expanded, заданный в разметке (аккордеон), — тоже.
+    // tabindex не трогается: без навигации стрелками неактивные вкладки ушли бы из Tab-обхода.
+    #aria(trigger, on) {
+        if (trigger.getAttribute('role') == 'tab') trigger.setAttribute('aria-selected', on);
+        if (trigger.hasAttribute('aria-expanded')) trigger.setAttribute('aria-expanded', on);
     }
 
     // history.state сохраняется: его держат роутеры SPA (vue-router хранит в нём позицию
@@ -324,6 +379,8 @@ export default class Toggle {
         if (on) this.#current = trigger;
         else if (moved)
             this.#current = this.#triggers.filter(t => t !== trigger && active(t)).at(-1) ?? null;
+
+        this.#aria(trigger, on);
 
         if (on && this.#params.group)
             this.#triggers

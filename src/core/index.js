@@ -101,22 +101,85 @@ export default class Core {
         setTimeout(() => URL.revokeObjectURL(url));
     }
 
+    static #form(form) {
+        return {
+            url:    form.getAttribute('action') || '',
+            method: form.getAttribute('method') || '',
+            data:   new FormData(form),
+        };
+    }
+
+    // Объект → пары имя/значение в PHP-нотации, как их собирает $_POST: вложенность и массивы
+    // объектов — с индексами (RULES[0][FROM]), массив примитивов — DRIVERS[]. undefined
+    // пропускается, null — пустая строка, булевы — по bool (['1', '0']), File и Blob как есть.
+    static #pairs(value, bool, name = '', out = []) {
+        let leaf = v => v === null || typeof v != 'object' || v instanceof Date || v instanceof Blob;
+
+        if (value === undefined) return out;
+        if (typeof value == 'boolean') out.push([name, bool[value ? 0 : 1]]);
+        else if (value === null) out.push([name, '']);
+        else if (value instanceof Date) out.push([name, value.toISOString()]);
+        else if (value instanceof Blob) out.push([name, value]);
+        else if (typeof value == 'object') {
+            let flat = Array.isArray(value) && value.every(leaf);
+            for (let [key, item] of Object.entries(value))
+                Core.#pairs(item, bool, name ? `${name}[${flat ? '' : key}]` : key, out);
+        } else out.push([name, String(value)]);
+
+        return out;
+    }
+
+    // Настроенный fetch: база API, постоянные заголовки и поля (sessid) без глобального
+    // состояния — Loader и app/form, которые сами вызывают Core.fetch, их не получают.
+    static {
+        this.fetch.with = ({ base, ...defaults }) => params => {
+            if (params instanceof HTMLFormElement) params = Core.#form(params);
+            params = { ...params };
+
+            let { data, url } = params, extra = defaults.data;
+            if (data instanceof HTMLFormElement) {
+                url ||= data.getAttribute('action') || '';
+                params.method ||= data.getAttribute('method') || '';
+                data = new FormData(data);
+            }
+
+            // Поля по умолчанию не перекрывают переданные.
+            if (extra != null) {
+                if (data == null) data = extra;
+                else if (data instanceof FormData) {
+                    let copy = new FormData();
+                    for (let [key, value] of data) copy.append(key, value);
+                    for (let [key, value] of Core.#pairs(extra, params.form_bool ?? defaults.form_bool ?? ['1', '0']))
+                        if (!data.has(key)) copy.append(key, value);
+                    data = copy;
+                } else if (Object.getPrototypeOf(data) === Object.prototype)
+                    data = { ...extra, ...data };
+            }
+
+            let merged = { ...defaults, ...params, data, url, headers: { ...defaults.headers, ...params.headers } };
+            if (base && url) merged.url = new URL(url, new URL(base, window.location.href)).href;
+
+            // Колбэки по умолчанию идут первыми, затем переданные.
+            for (let name of ['before_send', 'on_send', 'on_success', 'on_complete', 'on_failed'])
+                merged[name] = [defaults[name], params[name]];
+
+            return Core.fetch(merged);
+        };
+    }
+
     static fetch(params) {
         if (params instanceof HTMLFormElement)
-            params = {
-                url:    params.getAttribute('action') || '',
-                method: params.getAttribute('method') || '',
-                data:   new FormData(params),
-            };
+            params = Core.#form(params);
 
-        params = { url: '', method: '', data: null, headers: {}, timeout: 0, response_type: '', ...params };
+        params = { url: '', method: '', data: null, headers: {}, timeout: 0, response_type: '', encode: '', form_bool: ['1', '0'], ...params };
 
+        // Колбэк — функция или список функций (так их передаёт Core.fetch.with).
         const events = {
-            beforeSend: [params.before_send],
-            onSend:     [params.on_send],
-            onSuccess:  [params.on_success],
-            onComplete: [params.on_complete],
-            onFailed:   [params.on_failed],
+            beforeSend: [params.before_send].flat(),
+            onSend:     [params.on_send].flat(),
+            onSuccess:  [params.on_success].flat(),
+            onComplete: [params.on_complete].flat(),
+            onFailed:   [params.on_failed].flat(),
         };
 
         let request, resolve, reject, done = false;
@@ -178,12 +241,19 @@ export default class Core {
                 method = method ? method.toUpperCase() : 'GET';
 
                 if (body && typeof body == 'object') {
+                    // encode: 'form' — объект как форма с PHP-нотацией вложенности (Bitrix, $_POST).
+                    const pairs = params.encode == 'form' && !(body instanceof FormData)
+                        ? Core.#pairs(body, params.form_bool) : null;
+
                     if (method == 'GET') {
-                        const query = body instanceof FormData
-                            ? new URLSearchParams(body).toString()
+                        const query = body instanceof FormData || pairs
+                            ? new URLSearchParams(pairs ?? body).toString()
                             : Object.entries(body).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
                         if (query) url += (/\?.+=/.test(url) ? '&' : '?') + query;
                         body = null;
+                    } else if (pairs) {
+                        body = new FormData();
+                        for (const [name, value] of pairs) body.append(name, value);
                     } else if (!(body instanceof FormData)) {
                         body = JSON.stringify(params.data);
                         if (!Object.keys(params.headers).some(h => h.toLowerCase() == 'content-type'))

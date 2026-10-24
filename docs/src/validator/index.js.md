@@ -21,7 +21,7 @@ new Validator(params)
 
 | Параметр | По умолчанию | Описание |
 |---|---|---|
-| `target` | `'[validate]'` | Селектор / Element / NodeList / Array валидируемых элементов |
+| `target` | `'[validate]'` | Селектор / функция / Element / NodeList / Array валидируемых элементов. Селектор и функцию пересчитывает `refresh()` |
 | `events` | `['input', 'blur']` | События, запускающие проверку |
 | `test` | `null` | Правило или массив правил (все должны пройти): `RegExp`, строка-regexp или `fn(el)` |
 | `property` | `null` | Свойство элемента, к которому применяются regexp-правила (`innerHTML`, `textContent`, …) |
@@ -54,6 +54,7 @@ new Validator(params)
 | `check(target?)` | Проверить элементы (по умолчанию — все свои): `state`, `setCustomValidity`, хуки. Возвращает `true`, если все валидны |
 | `reset(target?)` | Снять `state`; `setCustomValidity` пересчитывается без хуков, чтобы submit оставался заблокированным |
 | `clone(params)` | Новый инстанс с объединёнными параметрами и `parent: this` |
+| `refresh()` | Пересканировать `target` (селектор или функцию): поля, ушедшие из DOM, отпустить, новые привязать. Нужен, когда поля перерисовывает App, Vue и т. п. Возвращает `this` |
 | `destroy()` | Разобрать: снять обработчики (в том числе `reset` на форме), `state`, `setCustomValidity` и `el.check()`/`el.reset()` со своих полей. На поле можно поднять новый Validator |
 | `get params()` | Текущая конфигурация (без хуков) |
 | `get valid()` | Массив `boolean` по привязанным элементам — без `state` и хуков |

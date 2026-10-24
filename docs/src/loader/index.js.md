@@ -20,7 +20,7 @@ new Loader(params)
 
 | Параметр | Тип | По умолчанию | Описание |
 |---|---|---|---|
-| `target` | `string\|Element` | `null` | Контейнер на странице |
+| `target` | `string\|function\|Element` | `null` | Контейнер на странице. Селектор и функцию пересчитывает `refresh()` |
 | `source` | `string` | `null` | Где в ответе данные. **HTML** — CSS-селектор; **JSON** — dot-path (`'data.items'`) |
 | `multiple` | `boolean` | `true` | `true` → массив элементов, `render` на каждый; `false` → один элемент, `render` один раз |
 | `mode` | `'append'\|'replace'\|'prepend'` | `'append'` | Режим вставки по умолчанию |
@@ -80,6 +80,7 @@ Lifecycle-хуки `before_init` / `on_init` / `before_load` / `on_failed` / `on
 |---|---|---|
 | `load(urlOrParams)` | `this` | Запрос + вставка. `params` (кроме `mode`) уходят в `Core.fetch`. Строка = `{ url }` |
 | `abort()` | `this` | Прервать текущий запрос |
+| `refresh()` | `this` | Найти контейнер заново по `target`: прежний перерисовал App, Vue и т. п. Загрузка идёт в контейнер, найденный последним |
 | `clone(params)` | `Loader` | Новый инстанс с унаследованными параметрами (`formats` сливается поверхностно) |
 | `loading` | `boolean` | Идёт ли запрос |
 | `params` | `object` | Текущие не-функциональные параметры (без `formats`) |

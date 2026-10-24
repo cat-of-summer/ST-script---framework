@@ -45,8 +45,27 @@ export default class App extends HTMLElement {
         return copy;
     }
 
+    // Опции конфига, которые не становятся свойствами компонента, и их ожидаемый вид.
+    static #reserved = {
+        setup: ['function', 'функция'],
+        template: ['string', 'строка'],
+        events: ['object', 'обработчики { имя: функция }'],
+        helpers: ['object', 'объект { имя: значение }']
+    };
+
+    // Данные с именем опции (events: [] для <select>) иначе молча становятся опцией.
+    static #check(options) {
+        for (let [key, [type, hint]] of Object.entries(App.#reserved)) {
+            let value = options[key];
+            if (value === undefined || typeof value === type && !Array.isArray(value) && value !== null) continue;
+            let got = Array.isArray(value) ? 'массив' : value === null ? 'null' : typeof value;
+            throw new TypeError(`App.create("${options.app}"): "${key}" - ${hint}, получен ${got}. Если это данные, переименуйте поле`);
+        }
+    }
+
     static create(options) {
         let { app, setup = () => {}, template = ``, events = {} } = options;
+        App.#check(options);
         if (App.#apps.has(app))
             throw new Error(`Application "${app}" already exists!`);
         App.#apps.set(app, { setup, template, events, config: options });
@@ -60,6 +79,8 @@ export default class App extends HTMLElement {
         let base = App.#apps.get(app);
         if (!base)
             throw new Error(`Application "${app}" not found!`);
+        // До слияния: массив в events растворился бы в { ...base.events, ...options.events }.
+        App.#check(options);
         let baseConfig = base.config;
         // Через дескрипторы, а не spread: spread вычисляет геттеры и замораживает их значения.
         let merged = Object.defineProperties({}, {
@@ -88,6 +109,8 @@ export default class App extends HTMLElement {
     #triggeredKeys = new Set();
     #pendingFlush = false;
     #tickWaiters = [];
+    // В проходах текущего flush выполнялись эффекты: в конце отправляется updated.
+    #redrawn = false;
     // Тип значения из конфига: по нему приводится строка из атрибута :prop.
     #types = new Map();
     #methodWrappers = new Map();
@@ -370,6 +393,7 @@ export default class App extends HTMLElement {
         }
         this.#flushing = true;
         const runFlush = () => {
+            this.#redrawn ||= this.#updateQueue.size > 0;
             this.#updateQueue.forEach(effect => {
                 try {
                     effect();
@@ -409,8 +433,13 @@ export default class App extends HTMLElement {
                 this.#pendingFlush = false;
                 this.#flushing = true;
                 Promise.resolve().then(runFlush);
-            } else
+            } else {
                 this.#tickWaiters.splice(0).forEach(resolve => resolve());
+                // updated — DOM догнал данные после перерисовки: сигнал внешнему коду
+                // (модулям с refresh()), что разметка шаблона могла смениться.
+                if (this.#redrawn && this.#rendered) this.dispatchEvent('updated');
+                this.#redrawn = false;
+            }
         };
         Promise.resolve().then(runFlush);
     }
@@ -591,7 +620,10 @@ export default class App extends HTMLElement {
         let descriptor = Object.getOwnPropertyDescriptor(this, key);
         if (!descriptor || !('value' in descriptor)) return;
         this.#warnedKeys.add(key);
-        console.warn(`<st-app app="${this.getAttribute('app') ?? ''}">: свойство "${key}" не объявлено в конфиге и не реактивно`);
+        let reason = key in App.#reserved || key === 'app'
+            ? 'занято опцией App.create, переименуйте его'
+            : 'не объявлено в конфиге';
+        console.warn(`<st-app app="${this.getAttribute('app') ?? ''}">: свойство "${key}" ${reason} и не реактивно`);
     }
 
     #evalExpression(expr) {
@@ -710,17 +742,52 @@ export default class App extends HTMLElement {
         this.#bindings.push({ type: 'class', element, effect });
     }
 
+    // #attr="{ disabled: busy, 'aria-selected': on }" и #attr.disabled="busy": значение берётся
+    // из выражения, а не из строки атрибута, поэтому шаблонизатор (Astro) не превратит его
+    // в голый disabled. Булевы атрибуты ставятся по истинности, остальные null и undefined
+    // снимают, иначе пишется String(). Имя, пропавшее из объекта, снимается.
+    #bindAttrs(element, attr) {
+        let name = attr.name.slice(6), expr = attr.value;
+        let active = new Set();
+        let apply = (attrName, value) => {
+            let live = App.#live_properties.has(attrName) && attrName in element
+                && (attrName !== 'value' || element.tagName === 'INPUT');
+            if (App.#boolean_attributes.has(attrName)) {
+                element.toggleAttribute(attrName, !!value);
+                if (live) element[attrName] = !!value;
+            } else if (value == null)
+                element.removeAttribute(attrName);
+            else {
+                element.setAttribute(attrName, value = String(value));
+                if (live && element.value !== value)
+                    element.value = value;
+            }
+        };
+        let effect = this.#effect(() => {
+            let value = this.#evalExpression(expr);
+            let next = name ? { [name]: value } : value && typeof value === 'object' ? value : {};
+            active.forEach(attrName => attrName in next || apply(attrName, null));
+            active = new Set(Object.keys(next));
+            active.forEach(attrName => apply(attrName, next[attrName]));
+        });
+        this.#bindings.push({ type: 'attrs', element, effect });
+    }
+
     #bindModel(element, attr) {
         let prop = attr.value;
         let effect = this.#effect(() => {
             let value = this.#evalExpression(prop);
+            // Массив у checkbox — группа: флажок отмечен, если его value есть в массиве.
             if (element.tagName === 'INPUT' && element.type === 'checkbox')
-                element.checked = !!value;
+                element.checked = Array.isArray(value) ? value.some(v => String(v) === element.value) : !!value;
             else if (element.tagName === 'INPUT' && element.type === 'radio')
                 element.checked = element.value === value;
             else if (element.tagName === 'SELECT') {
                 // Опции из #for появляются позже эффекта: ставим значение ещё раз после них.
-                let sync = () => { element.value = value; };
+                let values = element.multiple && Array.isArray(value) ? value.map(String) : [];
+                let sync = element.multiple
+                    ? () => { for (let option of element.options) option.selected = values.includes(option.value); }
+                    : () => { element.value = value; };
                 App.#selectSync.set(element, sync);
                 sync();
                 queueMicrotask(sync);
@@ -729,19 +796,26 @@ export default class App extends HTMLElement {
         });
         let capturedLoopCtx = this.#loopContext;
         let eventName = element.tagName === 'SELECT' ? 'change' : 'input';
-        let handler = (e) => {
-            let newValue;
-            if (element.type === 'checkbox')
-                newValue = element.checked;
+        let read = () => {
+            if (element.type === 'checkbox') {
+                // Группа получает новый массив, а не правку на месте: так меняется сам prop.
+                let list = this.#evalExpression(prop);
+                if (!Array.isArray(list)) return element.checked;
+                list = list.filter(v => String(v) !== element.value);
+                return element.checked ? [...list, element.value] : list;
+            }
             // Пустое числовое поле — null, а не NaN из valueAsNumber.
-            else if (element.type === 'number' || element.type === 'range')
-                newValue = element.value === '' ? null : element.valueAsNumber;
-            else
-                newValue = element.value;
+            if (element.type === 'number' || element.type === 'range')
+                return element.value === '' ? null : element.valueAsNumber;
+            if (element.tagName === 'SELECT' && element.multiple)
+                return Array.from(element.selectedOptions, option => option.value);
+            return element.value;
+        };
+        let handler = () => {
             if (capturedLoopCtx)
-                this.#withLoopVars(capturedLoopCtx, () => this.#assign(prop, newValue));
+                this.#withLoopVars(capturedLoopCtx, () => this.#assign(prop, read()));
             else
-                this.#assign(prop, newValue);
+                this.#assign(prop, read());
         };
         element.addEventListener(eventName, handler);
         this.#bindings.push({ type: 'model', element, effect, handler });
@@ -880,7 +954,8 @@ export default class App extends HTMLElement {
                 let vars = { [itemName]: value, $index: index };
                 if (key !== undefined) vars.$key = key;
                 let ctx = this.#loopScope(vars);
-                let id = keyExpr ? this.#withLoopVars(ctx, () => this.#evalExpression(keyExpr)) : Symbol();
+                // Ключ-объект (#key="row") — по исходнику: прокси у каждого пути items.N свой.
+                let id = keyExpr ? App.#raw(this.#withLoopVars(ctx, () => this.#evalExpression(keyExpr))) : Symbol();
                 if (keyExpr && next.has(id))
                     console.warn('Duplicate #key in #for:', loopExpr, id);
                 let prev = rendered.get(id);
@@ -905,12 +980,20 @@ export default class App extends HTMLElement {
             });
             rendered.forEach(dispose);
             rendered = next;
+            // Перестановка узла в DOM снимает с него фокус: полю перенесённой строки он
+            // возвращается вместе с выделением.
+            let focused = anchor.parentNode.contains(document.activeElement) ? document.activeElement : null, range = null;
+            try { range = focused && [focused.selectionStart, focused.selectionEnd, focused.selectionDirection]; } catch {}
             let ref = anchor;
             for (let i = ordered.length - 1; i >= 0; i--) {
                 let node = ordered[i].node;
                 if (node.nextSibling !== ref)
                     anchor.parentNode.insertBefore(node, ref);
                 ref = node;
+            }
+            if (focused?.isConnected && document.activeElement !== focused) {
+                focused.focus({ preventScroll: true });
+                try { if (range?.[0] != null) focused.setSelectionRange(...range); } catch {}
             }
             let select = anchor.parentNode?.closest?.('select');
             if (select) App.#selectSync.get(select)?.();
@@ -995,6 +1078,10 @@ export default class App extends HTMLElement {
             }
             else if (attr.name === '#class') {
                 this.#bindClass(element, attr);
+                element.removeAttribute(attr.name);
+            }
+            else if (attr.name === '#attr' || attr.name.startsWith('#attr.')) {
+                this.#bindAttrs(element, attr);
                 element.removeAttribute(attr.name);
             }
             else if (attr.name === '#show') {
