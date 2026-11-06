@@ -144,7 +144,7 @@ api({ url: 'rules.save', data: { RULES: rows } }).then(({ data }) => …);
 **Разбор ответа** — одинаковый для успеха и ошибки: `data` в `on_success`/`on_complete` и `response` в `on_failed` получаются одним и тем же способом.
 
 - Задан `response_type` — берётся `request.response` (для `'json'` это уже объект или `null`).
-- Иначе по заголовку `Content-Type`: `*/json` → `JSON.parse` (тело, которое не разобралось, остаётся строкой), `*/xml` → `Document` (XML), `*/html` → `Document` (HTML), иначе — текст.
+- Иначе по заголовку `Content-Type`: `*/json` и `*+json` (`application/problem+json`) → `JSON.parse` (тело, которое не разобралось, остаётся строкой), `*/xml` → `Document` (XML), `*/html` → `Document` (HTML), иначе — текст.
 
 **Колбэки** можно задать как в `params`, так и навесить методами возвращаемого объекта:
 

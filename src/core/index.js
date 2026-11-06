@@ -203,7 +203,7 @@ export default class Core {
         const parse = (xhr) => {
             if (xhr.responseType) return xhr.response;
             const type = xhr.getResponseHeader('Content-Type') || params.response_type || '';
-            if (type.includes('/json'))
+            if (/[/+]json\b/i.test(type))
                 try { return JSON.parse(xhr.responseText) } catch (e) { return xhr.responseText }
             if (type.includes('/xml'))
                 return new DOMParser().parseFromString(xhr.responseText, 'application/xml');

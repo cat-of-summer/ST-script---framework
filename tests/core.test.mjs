@@ -102,6 +102,15 @@ eq(r.success, undefined, '422 → onSuccess не вызван');
 r = await run({ status: 403, type: 'text/plain', body: 'forbidden' });
 eq(r.failed, { status: 403, response: 'forbidden' }, '403 + text → response строка');
 
+r = await run({ status: 422, type: 'application/problem+json', body: '{"title":"Invalid","errors":{"name":"required"}}' });
+eq(r.failed, { status: 422, response: { title: 'Invalid', errors: { name: 'required' } } }, 'problem+json разбирается как JSON');
+
+r = await run({ status: 200, type: 'application/vnd.api+json; charset=utf-8', body: '{"a":3}' });
+eq(r.success, { a: 3 }, 'суффикс +json с параметрами');
+
+r = await run({ status: 200, type: 'text/plain', body: 'see /json+x' });
+eq(r.success, 'see /json+x', 'обычный текст остаётся строкой');
+
 r = await run({ status: 500, type: 'application/json', body: 'not json' });
 eq(r.failed, { status: 500, response: 'not json' }, 'битый JSON → исходный текст');
 
