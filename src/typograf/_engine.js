@@ -64,6 +64,15 @@ function joins(left, right, rules) {
     return false;
 }
 
+// Короткий предлог, союз или частица (до SHORT букв) висит в конце строки заметнее всего: его
+// связь со следующим словом max_chain не рвёт — «в~Ростове-на-Дону», «а~прямой».
+const SHORT = 3;
+
+const hard = (left, rules) => {
+    let l = bare(left);
+    return rules.words && !CLOSE.test(left) && WORDS.has(l) && l.length <= SHORT;
+};
+
 export function glue(parts, rules = RULES) {
     rules = { ...RULES, ...rules };
 
@@ -85,13 +94,32 @@ export function glue(parts, rules = RULES) {
     });
 
     // Цепочка длиннее max_chain не влезет в узкую колонку. Справа налево: отпускается самая
-    // дальняя связь, ближние («над~городом») остаются. Авторские неразрывные — в длине, но не рвутся
-    if (rules.max_chain > 0 && words.length)
-        for (let w = words.length - 1, chain = word(w).length; w > 0; w--) {
+    // дальняя связь, ближние («над~городом») остаются. Авторские неразрывные — в длине, но не рвутся.
+    // Связь короткого предлога (hard) тоже не рвётся: если из-за неё цепочка длиннее предела,
+    // отпускаются обычные связи правее, от ближней: «А~когда наступал», а не «А когда~наступал».
+    // Нечего отпустить — цепочка остаётся длиннее предела: висящий предлог хуже.
+    if (rules.max_chain > 0 && words.length) {
+        // длина куска цепочки от слова a до слова b включительно, промежутки по одному символу
+        let span = (a, b) => { let n = b - a; for (let k = a; k <= b; k++) n += word(k).length; return n; };
+
+        for (let w = words.length - 1, end = w, chain = word(w).length; w > 0; w--) {
             let next = chain + 1 + word(w - 1).length;
-            if (join[w] === true && next > rules.max_chain) join[w] = false;
-            chain = join[w] ? next : word(w - 1).length;
+
+            if (join[w] === true && next > rules.max_chain) {
+                if (!hard(word(w - 1), rules)) join[w] = false;
+                else
+                    for (let v = w + 1; v <= end && next > rules.max_chain; v++)
+                        if (join[v] === true && !hard(word(v - 1), rules)) {
+                            join[v] = false;
+                            end = v - 1;
+                            next = span(w - 1, end);
+                        }
+            }
+
+            if (join[w]) chain = next;
+            else { chain = word(w - 1).length; end = w - 1; }
         }
+    }
 
     join.forEach((glued, w) => {
         if (glued !== true) return;
