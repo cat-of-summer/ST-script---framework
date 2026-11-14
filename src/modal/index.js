@@ -11,6 +11,8 @@ export default class Modal {
     #methods = {};
     #state = 'hidden';
     #pending_show = null;
+    // hide(), пришедший до конца анимации открытия: выполняется сразу после shown.
+    #pending_hide = null;
     // open(): промисы текущего показа и ждущие отложенного show().
     #resolvers = [];
     #waiting = [];
@@ -112,7 +114,11 @@ export default class Modal {
             ...params
         };
 
-        let timeout;
+        // Таймеры раздельные: общий хэндл перезаписывался, и clearTimeout гасил не тот.
+        // pass_timer - конец анимации, auto_timer - auto_close, unlock_timer - снятие блокировки прокрутки.
+        let pass_timer, auto_timer, unlock_timer;
+        // Поколение прохода toggle(): кадры и таймер прерванного прохода видят, что устарели, и выходят.
+        let pass = 0;
         let body_inline_styles;
         let default_scroll_behavior;
         let locked = false;
@@ -246,19 +252,24 @@ export default class Modal {
         }, { signal });
 
         let toggle = (params) => {
+            let id = ++pass;
+
             params.before_func(params.data);
             this.#emit(params.hide ? 'hide' : 'show', params.data);
 
-            clearTimeout(timeout);
+            clearTimeout(pass_timer);
 
             this.modal.style.display = 'flex';
 
             requestAnimationFrame(() => {
+                if (id !== pass) return;
                 this.#state = params.process;
                 this.modal.setAttribute('state', this.#state);
 
                 requestAnimationFrame(() => {
-                    timeout = setTimeout(() => {
+                    if (id !== pass) return;
+                    pass_timer = setTimeout(() => {
+                        if (id !== pass) return;
                         this.#state = params.final;
                         this.modal.setAttribute('state', this.#state);
 
@@ -281,6 +292,13 @@ export default class Modal {
                             this.show(pending.data);
                         }
 
+                        // hide(), пришедший во время showing, выполняется после полного открытия.
+                        if (!params.hide && this.#pending_hide) {
+                            let pending = this.#pending_hide;
+                            this.#pending_hide = null;
+                            this.hide(pending.data);
+                        }
+
                     }, this.#params.duration * 1000);
                 });
             });
@@ -288,6 +306,9 @@ export default class Modal {
         }
 
         this.show = (data = null) => {
+            // Побеждает последний вызов: show() отменяет отложенный hide(), окно остаётся открытым.
+            this.#pending_hide = null;
+
             if (this.#target == 'hidden' && this.#state != 'hidden' && !this.#params.allow_interrupt) {
                 this.#pending_show = { data };
                 return;
@@ -300,6 +321,8 @@ export default class Modal {
                 Modal.#open = Modal.#open.filter(modal => modal !== this);
                 Modal.#open.push(this);
                 this.#target = 'shown';
+                // Прерванное закрытие не должно снять блокировку прокрутки у снова открытого окна.
+                clearTimeout(unlock_timer);
                 this.#resolvers.push(...this.#waiting.splice(0));
 
                 // Фокус запоминается только при показе с нуля, не при прерванном закрытии.
@@ -345,9 +368,9 @@ export default class Modal {
                 }
 
                 if (this.#params.auto_close > 0) {
-                    clearTimeout(timeout);
+                    clearTimeout(auto_timer);
 
-                    timeout = setTimeout(() => {
+                    auto_timer = setTimeout(() => {
                         this.hide();
                     }, this.#params.auto_close * 1000);
                 }
@@ -360,12 +383,26 @@ export default class Modal {
                 this.#waiting.splice(0).forEach(resolve => resolve(null));
             this.#pending_show = null;
 
+            // Окно ещё открывается (до первого кадра state остаётся прежним, затем showing):
+            // закрытие откладывается до shown, а не теряется. С allow_interrupt showing прерывается сразу.
+            if (
+                this.#target == 'shown' &&
+                this.#state != 'shown' &&
+                !(this.#params.allow_interrupt && this.#state == 'showing')
+            ) {
+                this.#pending_hide = { data };
+                return;
+            }
+
             if (
                 this.#state == 'shown' ||
                 (this.#params.allow_interrupt && this.#state == 'showing')
             ) {
                 Modal.#open = Modal.#open.filter(modal => modal !== this);
                 this.#target = 'hidden';
+                this.#pending_hide = null;
+                // Таймер auto_close от этого показа не должен закрыть следующий.
+                clearTimeout(auto_timer);
                 // Esc и клик по оверлею передают событие — это не результат.
                 this.#result = data instanceof Event ? null : data;
 
@@ -378,9 +415,9 @@ export default class Modal {
                     data
                 });
 
-                clearTimeout(timeout);
+                clearTimeout(unlock_timer);
 
-                timeout = setTimeout(unlock, this.#params.duration * 1000);
+                unlock_timer = setTimeout(unlock, this.#params.duration * 1000);
             }
         };
 
@@ -399,7 +436,10 @@ export default class Modal {
         };
 
         this.#teardown = () => {
-            clearTimeout(timeout);
+            pass++;
+            clearTimeout(pass_timer);
+            clearTimeout(auto_timer);
+            clearTimeout(unlock_timer);
             unlock();
         };
 
@@ -434,6 +474,7 @@ export default class Modal {
         this.#teardown?.();
         Modal.#open = Modal.#open.filter(modal => modal !== this);
         this.#pending_show = null;
+        this.#pending_hide = null;
         [...this.#resolvers.splice(0), ...this.#waiting.splice(0)].forEach(resolve => resolve(null));
 
         disown(this.content, this);

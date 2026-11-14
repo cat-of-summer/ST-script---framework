@@ -587,6 +587,85 @@ await test('Modal: show() сразу после hide() не теряется', a
     await page.close();
 });
 
+await test('Modal: hide() во время открытия не теряется', async () => {
+    let page = await open(``, ['modal']);
+    let result = await page.evaluate(async () => {
+        let wait = ms => new Promise(r => setTimeout(r, ms));
+        // Потерянный hide() не разрешает open(): тест падает, а не виснет.
+        let within = p => Promise.race([p, wait(3000).then(() => 'timeout')]);
+        let log = [];
+        let m = new Modal({
+            content: '<div></div>', duration: 0.1,
+            on_show: d => log.push(`shown:${d}`), on_hide: d => log.push(`hidden:${d}`),
+        });
+
+        // До первого кадра: state ещё hidden.
+        let first = m.open(1);
+        let before = m.state;
+        m.hide('a');
+        let a = await within(first);
+        let afterA = [m.state, document.body.style.position];
+
+        // Во время showing.
+        let second = m.open(2);
+        await until(() => m.state === 'showing');
+        m.hide('b');
+        let b = await within(second);
+
+        // Отложенный hide() отменяется последующим show(): окно остаётся открытым.
+        m.show(3);
+        await until(() => m.state === 'showing');
+        m.hide('c');
+        m.show(4);
+        await until(() => m.state === 'shown');
+        await wait(250);
+        return [before, a, afterA, b, m.state, log];
+    });
+    eq(result, ['hidden', 'a', ['hidden', ''], 'b', 'shown',
+        ['shown:1', 'hidden:a', 'shown:2', 'hidden:b', 'shown:3']],
+        'hidden и showing: закрытие после shown со значением, show() отменяет отложенный hide()');
+    await page.close();
+});
+
+await test('Modal: allow_interrupt - hide() во время showing прерывает открытие', async () => {
+    let page = await open(``, ['modal']);
+    let result = await page.evaluate(async () => {
+        let wait = ms => new Promise(r => setTimeout(r, ms));
+        // Потерянный hide() не разрешает open(): тест падает, а не виснет.
+        let within = p => Promise.race([p, wait(3000).then(() => 'timeout')]);
+        let log = [];
+        let m = new Modal({
+            content: '<div></div>', duration: 0.2, allow_interrupt: true,
+            on_show: d => log.push(`shown:${d}`), on_hide: d => log.push(`hidden:${d}`),
+        });
+        let opened = m.open(1);
+        await until(() => m.state === 'showing');
+        m.hide('x');
+        let value = await within(opened);
+        // Кадры и таймер прерванного показа не возвращают окно в shown.
+        await wait(400);
+        return [value, m.state, m.modal.style.display, log];
+    });
+    eq(result, ['x', 'hidden', 'none', ['hidden:x']], 'открытие прервано без on_show, окно закрыто');
+    await page.close();
+});
+
+await test('Modal: auto_close прошлого показа не закрывает следующий', async () => {
+    let page = await open(``, ['modal']);
+    let state = await page.evaluate(async () => {
+        let wait = ms => new Promise(r => setTimeout(r, ms));
+        let m = new Modal({ content: '<div></div>', auto_close: 1 });
+        m.show(); await until(() => m.state === 'shown');
+        m.hide(); await until(() => m.state === 'hidden');
+        await wait(500);
+        m.show(); await until(() => m.state === 'shown');
+        await wait(600);
+        return m.state;
+    });
+    eq(state, 'shown', 'таймер auto_close снят при закрытии');
+    await page.close();
+});
+
 await test('Modal: цвет затемнения через CSS-переменную', async () => {
     let page = await open(`<style>modal-overlay { --modal-overlay-color: rgb(1, 2, 3); }</style>`, ['modal']);
     let color = await page.evaluate(() => {
