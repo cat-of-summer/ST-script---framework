@@ -49,6 +49,12 @@ export default class Cookie {
         return null;
     }
 
+    // Проверяется наличие, а не get() === null: значение null тоже валидно (consent пишет именно его).
+    static has(name) {
+        name = encodeURIComponent(name) + '=';
+        return document.cookie.split(';').some(c => c.trim().startsWith(name));
+    }
+
     static delete(name, params = {}) {
         Cookie.set(name, '', {
             expires: 0,
@@ -65,11 +71,8 @@ export default class Cookie {
             ...params
         };
 
-        // Проверяется наличие, а не get() === null: значение null тоже валидно (consent пишет именно его).
-        let exists = () => document.cookie.split(';').some(c => c.trim().startsWith(encodeURIComponent(name) + '='));
-
         let interval = setInterval(() => {
-            if (!exists()) {
+            if (!Cookie.has(name)) {
                 Cookie.set(name, params.value, params);
 
                 setTimeout(() => {

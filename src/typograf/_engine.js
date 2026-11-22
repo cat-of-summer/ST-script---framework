@@ -15,6 +15,7 @@ export const RULES = {
     abbr: true,         // сокращение — к следующему слову: «т. е.», «№ 5», «г. Москва»
     initials: true,     // инициалы — к фамилии: «А. С. Пушкин», «Пушкин А. С.»
     last_word: true,    // последнее слово прогона не остаётся на строке одно
+    last_word_min: 0,   // last_word — только в прогонах от стольких слов; 0 — без порога
     max_chain: 14,      // склеенная цепочка не длиннее стольких символов; 0 — без предела
 };
 
@@ -87,10 +88,12 @@ export function glue(parts, rules = RULES) {
 
     // join[w] — судьба промежутка перед куском w: true — клеить, false — нет, 'kept' — уже неразрывный
     let word = w => tokens[words[w]][0];
+    let last = words.length - 1;
+    let tail = rules.last_word && words.length >= rules.last_word_min;
     let join = words.map((_, w) => {
         if (!w) return false;
         if (UNBREAKABLE.test(tokens[words[w] - 1][0])) return 'kept';
-        return rules.last_word && w == words.length - 1 || joins(word(w - 1), word(w), rules);
+        return tail && w == last || joins(word(w - 1), word(w), rules);
     });
 
     // Цепочка длиннее max_chain не влезет в узкую колонку. Справа налево: отпускается самая
@@ -120,6 +123,12 @@ export function glue(parts, rules = RULES) {
             else { chain = word(w - 1).length; end = w - 1; }
         }
     }
+
+    // last_word не забирает последнее место переноса: подпись «каждый год» должна уметь сложиться
+    // в две строки. Связи по другим правилам («в~доме», «2024~год») остаются.
+    if (tail && last > 0 && join[last] === true && !joins(word(last - 1), word(last), rules)
+        && join.slice(1, last).every(Boolean))
+        join[last] = false;
 
     join.forEach((glued, w) => {
         if (glued !== true) return;

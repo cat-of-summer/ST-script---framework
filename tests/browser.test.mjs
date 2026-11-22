@@ -898,6 +898,20 @@ await test('Cookie.callback: записанный null не перезапуск
     await page.close();
 });
 
+await test('Cookie.has: наличие, а не значение', async () => {
+    let page = await open(``, ['cookie']);
+    let result = await page.evaluate(() => {
+        Cookie.set('empty', null);
+        Cookie.set('flag', false);
+        Cookie.set('имя', 1);
+        let before = [Cookie.has('empty'), Cookie.has('flag'), Cookie.has('имя'), Cookie.has('fla'), Cookie.has('none')];
+        Cookie.delete('flag');
+        return [before, Cookie.has('flag')];
+    });
+    eq(result, [[true, true, true, false, false], false], 'null и false есть, префикс и удалённая - нет');
+    await page.close();
+});
+
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
@@ -2143,6 +2157,24 @@ await test('Uploader.refresh: новый корень поднят, ушедши
     }, root);
     eq(result, [true, true, 1], 'корни сменились, у нового своё поле выбора');
     eq(page.errors, [], 'без ошибок');
+    await page.close();
+});
+
+await test('Typograf: body с height: 100% обрабатывает новый текст после прокрутки', async () => {
+    let page = await open(`<style>html, body { height: 100%; margin: 0 }</style><div style="height: 6000px"></div>`, ['typograf']);
+    let result = await page.evaluate(async () => {
+        let typograf = new Typograf({ target: 'body' });
+        scrollTo(0, 5000);
+        await new Promise(r => setTimeout(r, 150));
+        let p = document.createElement('p');
+        p.textContent = 'Она пришла в дом на закате';
+        document.body.append(p);
+        await until(() => p.textContent.includes(' '), 500);
+        let glued = p.textContent.includes(' ');
+        typograf.destroy();
+        return [document.body.getBoundingClientRect().bottom < 0, glued];
+    });
+    eq(result, [true, true], 'рамка body ушла с экрана, текст обработан');
     await page.close();
 });
 

@@ -25,6 +25,10 @@
 
 Возвращает значение cookie (автоматический `JSON.parse`) или `null`.
 
+### `Cookie.has(name)`
+
+Возвращает `true`, если cookie есть, в том числе со значением `null` или `false`. Для проверки наличия используйте его, а не `get(name) === null`.
+
 ### `Cookie.delete(name, params?)`
 
 Удаляет cookie (устанавливает `expires: 0`).
@@ -77,4 +81,18 @@ Cookie.consent({
     location: 'bottom',
     name: 'gdpr_consent'
 });
+```
+
+### Подсказка до первого взаимодействия
+
+`Cookie.callback` записывает cookie в момент показа, поэтому подсказка исчезнет при следующем заходе, даже если пользователь её не заметил. Чтобы показывать её до первого действия, cookie пишется в обработчике:
+
+```js
+const hint = document.querySelector('.menu-hint');
+hint.hidden = Cookie.has('menu_hint');
+
+menu.addEventListener('click', () => {
+    hint.hidden = true;
+    Cookie.set('menu_hint', 1, { expires: Infinity });
+}, { once: true });
 ```

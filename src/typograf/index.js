@@ -142,11 +142,13 @@ export default class Typograf {
         own(el, this);
 
         // начальная обработка синхронно, если цель у экрана: без мигания сырого текста
-        let st = { near: !this.#params.lazy || Typograf.#near(el), dirty: true };
+        // body и html всегда у экрана: при height: 100% их рамка уезжает при прокрутке, а содержимое — нет
+        let page = el === document.body || el === document.documentElement;
+        let st = { near: page || !this.#params.lazy || Typograf.#near(el), dirty: true };
         this.#states.set(el, st);
 
         if (!this.#params.live) this.#mo.observe(el, { childList: true, subtree: true, characterData: true });
-        this.#io.observe(el);
+        if (!page) this.#io.observe(el);
         if (st.near) this.#apply(el);
     }
 

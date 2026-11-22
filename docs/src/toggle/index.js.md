@@ -291,17 +291,51 @@ new Toggle({ target: trigger => trigger.parentElement.querySelector('.drop') });
 самостоятельно — это делает разработчик.
 
 ```css
-/* Спойлер: видим в active/activating, скрыт в inactive/deactivating */
-[content] { overflow: hidden; transition: height .3s, opacity .3s; }
-
-[content][state="inactive"],
-[content][state="deactivating"] { opacity: 0; height: 0; }
+/* Спойлер: высота анимируется от 0 до высоты содержимого */
+[content] {
+    display: grid;
+    grid-template-rows: 0fr;
+    visibility: hidden;
+    transition: grid-template-rows .3s, visibility 0s linear .3s;
+}
 
 [content][state="active"],
-[content][state="activating"]   { opacity: 1; }
+[content][state="activating"] {
+    grid-template-rows: 1fr;
+    visibility: visible;
+    transition: grid-template-rows .3s, visibility 0s;
+}
+
+[content] > * { min-height: 0; overflow: hidden; }
 ```
 
+`height: auto` не анимируется, а строка сетки от `0fr` до `1fr` - да, и высоту содержимого знать
+не нужно. Внутри цели должен быть **один элемент-обёртка**: голый текст не получит `min-height: 0`
+и не свернётся. `visibility` убирает свёрнутые ссылки и кнопки из обхода по Tab. Длительность в
+CSS совпадает с `duration` у `Toggle`.
+
 > **Совет:** разделяя `activating`/`deactivating`, можно задать разные анимации входа и выхода.
+
+### Карточка, у которой раскрывается только низ
+
+Верх карточки не двигается, если раскрываемый блок идёт после него в потоке, а сама карточка
+прижата к началу ряда. Без `align-items: start` соседние карточки растянутся вслед за открытой,
+а при центрировании содержимого по вертикали верх поедет.
+
+```html
+<div class="cards">
+    <article class="card">
+        <h3>Название вакансии</h3>
+        <p>Краткое описание</p>
+        <div id="job-1" content><div>Подробности…</div></div>
+        <button trigger target="#job-1" aria-expanded="false">Подробнее</button>
+    </article>
+</div>
+```
+
+```css
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); align-items: start; }
+```
 
 ---
 
@@ -311,7 +345,7 @@ new Toggle({ target: trigger => trigger.parentElement.querySelector('.drop') });
 
 ```html
 <button trigger target="#more">Подробнее</button>
-<div id="more" content>Скрытый текст…</div>
+<div id="more" content><div>Скрытый текст…</div></div>
 ```
 
 ```js
